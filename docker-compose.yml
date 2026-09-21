@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: plexu
+      POSTGRES_PASSWORD: plexu
+      POSTGRES_DB: plexu
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plexu"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://plexu:plexu@db:5432/plexu
+      APP_URL: http://localhost:3000
+      APP_SECRET: change-me
+    ports: ["3000:3000"]
+    command: sh -c "node scripts/migrate.mjs && node server.js"
+
+  worker:
+    build: .
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://plexu:plexu@db:5432/plexu
+    command: node scripts/worker.mjs
+
+volumes:
+  pgdata:
