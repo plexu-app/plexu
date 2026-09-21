@@ -1,12 +1,12 @@
 // Migrador simples: aplica src/db/migrations/*.sql em ordem, uma vez cada.
 import postgres from "postgres";
 import { readdirSync, readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
-const dir = join(dirname(fileURLToPath(import.meta.url)), "migrations");
-const url = process.env.DATABASE_URL ?? "postgres://plexu:plexu@localhost:5432/plexu";
-const sql = postgres(url, { max: 1 });
+// Diretório das migrações: MIGRATIONS_DIR ou <cwd>/src/db/migrations (funciona no dev e no container).
+const dir = process.env.MIGRATIONS_DIR ?? join(process.cwd(), "src", "db", "migrations");
+const url = process.env.DATABASE_URL ?? "postgres://plexu:plexu@localhost:5433/plexu";
+const sql = postgres(url, { max: 1, onnotice: () => {} });
 
 await sql`create table if not exists _migrations (name text primary key, applied_at timestamptz not null default now())`;
 const applied = new Set((await sql`select name from _migrations`).map((r) => r.name as string));

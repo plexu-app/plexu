@@ -1,7 +1,7 @@
 // Worker de automações (pg-boss sobre o mesmo Postgres). MVP: esqueleto.
 import { PgBoss } from "pg-boss";
 
-const boss = new PgBoss(process.env.DATABASE_URL ?? "postgres://plexu:plexu@localhost:5432/plexu");
+const boss = new PgBoss(process.env.DATABASE_URL ?? "postgres://plexu:plexu@localhost:5433/plexu");
 boss.on("error", (e: Error) => console.error(e));
 await boss.start();
 await boss.createQueue("automation.run");

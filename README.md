@@ -34,7 +34,7 @@ Desenvolvimento:
 
 ```bash
 pnpm install
-docker compose up db -d
+docker compose up db -d   # expõe em localhost:5433
 pnpm db:migrate
 pnpm dev
 ```
