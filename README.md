@@ -21,7 +21,7 @@ O mesmo `board` serve como lista, kanban, pipe com fases, cadastro (database) ou
 
 ## Estado
 
-Pré-alpha. O que existe hoje: modelo de dados, migração inicial, esqueleto do app. Roadmap e decisões em [`docs/PRODUTO.md`](docs/PRODUTO.md); modelo completo em [`docs/schema.sql`](docs/schema.sql).
+Pré-alpha. O que existe hoje: modelo de dados, migração inicial, esqueleto do app. Roadmap e decisões em [`docs/PRODUTO.md`](docs/PRODUTO.md); modelo completo em [`docs/schema.sql`](docs/schema.sql); linguagem de expressões (regras, condições, fórmulas) em [`docs/EXPRESSOES.md`](docs/EXPRESSOES.md).
 
 ## Rodar
 
