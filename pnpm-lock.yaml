@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       '@marcbachmann/cel-js':
-        specifier: ^8.0.0
+        specifier: 8.0.0
         version: 8.0.0
       drizzle-orm:
         specifier: ^0.45.3
