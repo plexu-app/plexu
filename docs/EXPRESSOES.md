@@ -2,7 +2,7 @@
 
 Regras (`can_enter`, `can_leave`, `can_back`, `can_edit`, `can_delete`), condições de ação/automação, visibilidade e obrigatoriedade de campo, valores padrão e fórmulas usam a mesma linguagem: **CEL** (Common Expression Language), com um contexto em português. Motor em `src/lib/expr.ts`; contrato em `PRODUTO.md` (decisão 15) e `schema.sql` (tabela `rules`).
 
-A implementação usa a biblioteca [`@marcbachmann/cel-js`](https://www.npmjs.com/package/@marcbachmann/cel-js). O pacote `cel-js` (ChromeGG) foi descartado porque sua gramática não aceita método após chamada de função (`filhos("x").todos(...)`) nem macros customizadas.
+A implementação usa a biblioteca [`@marcbachmann/cel-js`](https://www.npmjs.com/package/@marcbachmann/cel-js), **fixada em 8.0.0** porque as macros PT-BR e o `has()` tocam detalhes internos dela (`ast.clone`, `ast.setMeta`, `parser.registry.findMacro`); um teste em `expr.test.ts` falha com orientação se esses pontos mudarem. O pacote `cel-js` (ChromeGG) foi descartado porque sua gramática não aceita método após chamada de função (`filhos("x").todos(...)`) nem macros customizadas.
 
 ## Contexto
 
@@ -12,7 +12,7 @@ A implementação usa a biblioteca [`@marcbachmann/cel-js`](https://www.npmjs.co
 | `pai.<slug>` | valor | Card pai (relação `is_parent`). `pai` é `null` quando não há. |
 | `filhos(<rel>)` | lista | Cards ligados ao card atual pela relação, lado filhos. |
 | `pais(<rel>)` | lista | Idem, lado pais. |
-| `cartoes(<board>)` | lista | Cards de um board do workspace. |
+| `cartoes(<board>)` | lista | Cards de um board do workspace (board inteiro em memória; ver limitação abaixo). |
 | `existe(<board>, x, cond)` | bool | Algum card do board satisfaz `cond`. Forma curta: `existe(<board>, cond)` usando `item`. |
 | `fase`, `fase_origem`, `fase_destino` | string ou null | Fase atual e, em transições, origem e destino. |
 | `usuario` | registro | Quem dispara a ação (`usuario.id`, `usuario.email`, ...). |
@@ -27,7 +27,7 @@ Métodos de lista:
 | `.contar()` | quantidade de elementos |
 | `.soma(<slug>)` | soma numérica do campo; `null`/não numérico contam 0 |
 
-As macros padrão do CEL continuam disponíveis e compõem com as acima: `filter`, `map`, `exists`, `all`, `size`, `in`, ternário `? :`. Como campo ausente lê como `null`, teste presença com `card.x != null` (o `has(card.x)` do CEL é sempre verdadeiro aqui).
+As macros padrão do CEL continuam disponíveis e compõem com as acima: `filter`, `map`, `exists`, `all`, `size`, `in`, ternário `? :`. Campo ausente lê como `null`; `has(card.x)` diz se a chave existe em props/computed (valor `null` presente conta como presente; chave com `undefined` conta como ausente).
 
 ## Exemplos
 
@@ -55,6 +55,14 @@ filhos("parcelas").soma("valor") - filhos("parcelas").filter(p, p.pago).soma("va
 ```
 
 Sim/não em obrigatório/visível (decisão 11) são as expressões constantes `true` e `false`.
+
+## Limitação MVP: existe() e cartoes() carregam o board inteiro
+
+O resolver entrega `cartoes(board)` como lista completa em memória, e `existe(board, x, cond)` percorre essa lista; a condição **não** vira consulta SQL. Para boards pequenos (cadastros, bases) é adequado. Para boards grandes, o chamador deve pré-filtrar no resolver (por exemplo, só cards ativos) ou evitar `existe()` em regras avaliadas com frequência. Traduzir `cond` para SQL fica para depois do MVP.
+
+## Limites estruturais
+
+`parse`/`compile` recusam com `ExprError` (`codigo: "sintaxe"`, mensagem `expressão excede o limite de <nome> (<valor>)`) expressões acima dos limites em `LIMITES`: caracteres (20 000), profundidade de aninhamento (40), nós (2 000), elementos de lista (500), entradas de mapa (200) e argumentos por chamada (16).
 
 ## Tipos e aritmética
 
