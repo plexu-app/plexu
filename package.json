@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
@@ -16,6 +17,7 @@
   "license": "AGPL-3.0-only",
   "packageManager": "pnpm@10.28.0",
   "dependencies": {
+    "@marcbachmann/cel-js": "8.0.0",
     "drizzle-orm": "^0.45.3",
     "next": "^15.5.25",
     "pg-boss": "^12.33.3",
@@ -36,7 +38,8 @@
     "postcss": "^8.5.28",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.1"
   },
   "private": true,
   "type": "module",
