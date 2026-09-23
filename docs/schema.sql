@@ -165,10 +165,11 @@ create table card_links (
   to_card_id uuid not null references cards on delete cascade,
   position int not null default 0,
   created_at timestamptz not null default now(),
+  deleted_at timestamptz,                         -- decisão 17: espelha cards.deleted_at de uma das pontas; ligação inativa é ignorada
   unique (field_id, from_card_id, to_card_id)
 );
 create index on card_links (to_card_id);
--- exclusive=true: índice único parcial (field_id, to_card_id) criado ao configurar a relação → card só selecionável em um card daquela conexão.
+-- exclusive=true: índice único parcial (field_id, to_card_id) criado ao configurar a relação (where deleted_at is null) → card só selecionável em um card daquela conexão.
 -- lock_fields_while_linked: campos do card de origem ficam somente-leitura enquanto existir link neste campo (cadeia solicitação → cotação → OC desfaz-se de trás pra frente).
 
 -- Contadores atômicos. scope_key = '' (global do board) | to_card_id do pai | '2026' | '2026-09' | '2026-09-21'.
@@ -177,7 +178,7 @@ create index on card_links (to_card_id);
 --   contrato : {pattern:'CT-{n}/{ano}',        scope:'year'}                        → CT-0001/2026 (reinicia em 2027)
 --   versão   : {pattern:'{pai.numero}-v{n}',    scope:'parent', parent_field:<rel>}  → CT-0001/2026-v3
 --   parcela  : {pattern:'{pai.numero}/{n}',     scope:'parent', parent_field:<rel>, pad:2} → CT-0001/2026/04
---   proposta : {pattern:'P{n}',                 scope:'global', seed:6572, pad:0}   → P6573
+--   proposta : {pattern:'P{n}',                 scope:'global', seed:6572, pad:0}   → P6572 (semente = primeiro valor emitido)
 -- Atribuído no INSERT dentro da transação (SELECT ... FOR UPDATE em sequences). Nunca reutilizado, nunca editável.
 create table sequences (
   field_id uuid references fields on delete cascade,
