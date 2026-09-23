@@ -39,6 +39,14 @@ pnpm db:migrate
 pnpm dev
 ```
 
+Checagens (obrigatórias antes de PR; os testes de integração usam o Postgres acima):
+
+```bash
+pnpm typecheck && pnpm lint && pnpm test
+```
+
+**`pnpm build` no Windows**: a saída `standalone` do Next cria symlinks, e o Windows recusa sem permissão (`EPERM: operation not permitted, symlink`). Ative o *Modo de desenvolvedor* (Configurações → Sistema → Para desenvolvedores) ou rode o build via Docker (`docker compose build app`). O CI (Linux) não tem essa restrição.
+
 ## Stack
 
 TypeScript ponta a ponta · Next.js · Drizzle · PostgreSQL (dados, filas e eventos) · Tailwind. Sem Redis, sem serviços externos. Uma instalação = um `docker compose up`.
