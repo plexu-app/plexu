@@ -1,5 +1,19 @@
+import { readFileSync } from "node:fs";
+import { Environment } from "@marcbachmann/cel-js";
 import { describe, expect, it } from "vitest";
-import { compile, evaluate, evaluateBool, ExprError, lint, parse, type ExprContext, type ExprResolver } from "./expr";
+import {
+  compile,
+  evaluate,
+  evaluateBool,
+  exigirInterno,
+  ExprError,
+  LIMITES,
+  lint,
+  parse,
+  VERSAO_CEL_JS,
+  type ExprContext,
+  type ExprResolver,
+} from "./expr";
 
 const resolver: ExprResolver = {
   filhos: (rel) =>
@@ -284,5 +298,107 @@ describe("lint()", () => {
 
   it("expressão inválida não gera avisos", () => {
     expect(lint("card.a >")).toEqual([]);
+  });
+});
+
+describe("has(): presença real do campo", () => {
+  const c: ExprContext = { ...ctx, card: { a: 1, n: null, obj: { x: 1 } } };
+
+  it("true só quando a chave existe em props/computed (null presente conta)", () => {
+    expect(evaluateBool("has(card.a)", c)).toBe(true);
+    expect(evaluateBool("has(card.n)", c)).toBe(true);
+    expect(evaluateBool("has(card.x)", c)).toBe(false);
+    expect(evaluateBool("!has(card.x) && card.x == null", c)).toBe(true);
+    expect(evaluateBool("has(card.nada)", { ...c, card: { nada: undefined } })).toBe(false);
+  });
+
+  it("funciona em pai, registros aninhados e dentro de macros", () => {
+    expect(evaluateBool("has(pai.numero) && !has(pai.zzz)", c)).toBe(true);
+    expect(evaluateBool("has(card.obj.x) && !has(card.obj.y) && !has(card.x.y)", c)).toBe(true);
+    expect(evaluateBool('filhos("parcelas").todos(has(item.numero)) && !filhos("parcelas").algum(has(item.zzz))', c)).toBe(true);
+  });
+
+  it("rejeita argumento que não é campo", () => {
+    const r = parse("has(card)");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.erro.codigo).toBe("tipo");
+  });
+});
+
+describe("limites de tamanho e profundidade", () => {
+  const codigo = (e: string) => {
+    const r = parse(e);
+    return r.ok ? null : r.erro;
+  };
+
+  it("expõe os limites", () => {
+    expect(LIMITES.profundidade).toBeGreaterThan(10);
+    expect(LIMITES.nos).toBeGreaterThan(100);
+  });
+
+  it("profundidade excessiva dá erro claro", () => {
+    const n = LIMITES.profundidade + 5;
+    const erro = codigo("(".repeat(n) + "card.a" + ")".repeat(n));
+    expect(erro?.codigo).toBe("sintaxe");
+    expect(erro?.mensagem).toBe(`expressão excede o limite de profundidade (${LIMITES.profundidade})`);
+    expect(() => compile("(".repeat(n) + "1" + ")".repeat(n))).toThrowError(/profundidade/);
+  });
+
+  it("nós demais dão erro claro", () => {
+    const erro = codigo(Array(LIMITES.nos).fill("card.a").join(" + "));
+    expect(erro?.codigo).toBe("sintaxe");
+    expect(erro?.mensagem).toBe(`expressão excede o limite de nós (${LIMITES.nos})`);
+  });
+
+  it("texto longo demais é recusado antes do parse", () => {
+    const erro = codigo("card.a == 1 " + "// comentário".repeat(LIMITES.caracteres / 10));
+    expect(erro?.mensagem).toBe(`expressão excede o limite de caracteres (${LIMITES.caracteres})`);
+  });
+
+  it("expressões razoáveis passam", () => {
+    expect(parse("(".repeat(10) + 'filhos("p").todos(i, (i.a > 1 && (i.b < 2)))' + ")".repeat(10)).ok).toBe(true);
+    expect(parse(Array(200).fill("card.a == 1").join(" || ")).ok).toBe(true);
+  });
+});
+
+describe("acoplamento interno com @marcbachmann/cel-js", () => {
+  const orientacao = "revisar as macros PT-BR em src/lib/expr.ts (todos/algum/existe/has) após atualizar @marcbachmann/cel-js";
+
+  it("versão fixada exatamente em package.json e instalada", () => {
+    const raiz = new URL("../../", import.meta.url);
+    const pkg = JSON.parse(readFileSync(new URL("package.json", raiz), "utf8")) as { dependencies: Record<string, string> };
+    const instalado = JSON.parse(
+      readFileSync(new URL("node_modules/@marcbachmann/cel-js/package.json", raiz), "utf8"),
+    ) as { version: string };
+    expect(pkg.dependencies["@marcbachmann/cel-js"], `fixar @marcbachmann/cel-js em ${VERSAO_CEL_JS} exato; ${orientacao}`).toBe(VERSAO_CEL_JS);
+    expect(instalado.version, `versão instalada difere de ${VERSAO_CEL_JS}; ${orientacao}`).toBe(VERSAO_CEL_JS);
+  });
+
+  it("ast.clone, ast.meta e ast.setMeta existem", () => {
+    const ast = new Environment().parse("1 + 1").ast as unknown as Record<string, unknown>;
+    expect(typeof ast.clone, `ast.clone ausente: ${orientacao}`).toBe("function");
+    expect(typeof ast.setMeta, `ast.setMeta ausente: ${orientacao}`).toBe("function");
+    const meta = ast.meta as Record<string, unknown> | undefined;
+    expect(typeof meta?.check, `ast.meta.check ausente: ${orientacao}`).toBe("function");
+    expect(typeof meta?.evaluate, `ast.meta.evaluate ausente: ${orientacao}`).toBe("function");
+  });
+
+  it("macro handler recebe parser.registry.findMacro com all/exists", () => {
+    let recebido: { parser?: { registry?: { findMacro?: unknown } } } | undefined;
+    const env = new Environment().registerFunction("sonda(ast): bool", (o: typeof recebido) => {
+      recebido = o;
+      return { async: false, typeCheck: () => "bool", evaluate: () => true };
+    });
+    env.parse("sonda(1)");
+    const findMacro = recebido?.parser?.registry?.findMacro;
+    expect(typeof findMacro, `parser.registry.findMacro ausente: ${orientacao}`).toBe("function");
+    const registry = recebido!.parser!.registry as { findMacro(n: string, r: boolean, a: number): { handler?: unknown } | undefined };
+    expect(typeof registry.findMacro("all", true, 2)?.handler, `macro all ausente: ${orientacao}`).toBe("function");
+    expect(typeof registry.findMacro("exists", true, 2)?.handler, `macro exists ausente: ${orientacao}`).toBe("function");
+  });
+
+  it("exigirInterno falha com mensagem orientando a revisão", () => {
+    expect(() => exigirInterno(false, "ast.clone")).toThrowError(/revisar as macros PT-BR.*ast\.clone ausente/);
+    expect(() => exigirInterno(true, "ast.clone")).not.toThrow();
   });
 });

@@ -13,7 +13,9 @@
 //   hoje()                           data local do servidor, "AAAA-MM-DD" (sobreponível no contexto)
 //   existe(<board>, x, cond)         algum card do board satisfaz cond (x opcional: usar "item")
 //   cartoes(<board>)                 lista de cards de um board do workspace
-// Todas as macros padrão do CEL continuam disponíveis (all, exists, filter, map, has, size...).
+// Todas as macros padrão do CEL continuam disponíveis (all, exists, filter, map, size...).
+// has(card.x) reflete presença real da chave em props/computed (campo ausente lê null).
+// Limites estruturais em LIMITES; @marcbachmann/cel-js fixado em VERSAO_CEL_JS.
 //
 // O motor não acessa banco: filhos/pais/cartoes vêm de um resolver injetado no contexto,
 // com os dados já carregados pelo chamador.
@@ -133,7 +135,12 @@ function normalizarValor(v: unknown): unknown {
 }
 
 function paraRegistro(obj: Registro): RegistroExpr {
-  return new RegistroExpr(Object.entries(obj).map(([k, v]) => [k, normalizarValor(v)]));
+  // Chave com undefined é tratada como ausente (has() false, leitura null).
+  return new RegistroExpr(
+    Object.entries(obj)
+      .filter(([, v]) => v !== undefined)
+      .map(([k, v]) => [k, normalizarValor(v)]),
+  );
 }
 
 function normalizarSaida(v: unknown): unknown {
@@ -188,6 +195,18 @@ interface NoInterno {
   end: number;
   meta: { check: unknown; evaluate: unknown };
   clone(op: unknown, args: unknown): NoInterno;
+  setMeta(chave: string, valor: unknown): NoInterno;
+}
+
+/** Versão da biblioteca contra a qual o acoplamento interno abaixo foi verificado. */
+export const VERSAO_CEL_JS = "8.0.0";
+
+const AVISO_INTERNO =
+  "@marcbachmann/cel-js mudou internamente; revisar as macros PT-BR (todos/algum/existe/has) em src/lib/expr.ts";
+
+/** Garante que um detalhe interno da biblioteca ainda existe; falha com orientação. */
+export function exigirInterno(condicao: unknown, oQue: string): void {
+  if (!condicao) throw new Error(`${AVISO_INTERNO}: ${oQue} ausente`);
 }
 
 interface MacroOpts {
@@ -209,9 +228,10 @@ function erroSintaxe(mensagem: string, no: NoInterno): ParseError {
 }
 
 function expandirPara(nomeCel: "all" | "exists", o: MacroOpts, args: NoInterno[], receiver: NoInterno): unknown {
+  exigirInterno(typeof o.parser?.registry?.findMacro === "function", "parser.registry.findMacro");
   const macro = o.parser.registry.findMacro(nomeCel, true, 2);
-  if (!macro) throw new Error(`macro CEL '${nomeCel}' indisponível`);
-  return macro.handler({ ...o, args, receiver, methodName: nomeCel });
+  if (!macro || typeof macro.handler !== "function") exigirInterno(false, `macro CEL '${nomeCel}'`);
+  return (macro as { handler(o: MacroOpts): unknown }).handler({ ...o, args, receiver, methodName: nomeCel });
 }
 
 function variavelEPredicado(o: MacroOpts, args: NoInterno[], nome: string): [NoInterno, NoInterno] {
@@ -233,17 +253,98 @@ function quantificador(nome: "todos" | "algum") {
 
 function existe(o: MacroOpts) {
   const [board, ...resto] = o.args;
+  exigirInterno(typeof o.ast?.clone === "function", "ast.clone");
+  exigirInterno(o.ast.meta && typeof o.ast.meta.check === "function", "ast.meta.check");
   const opCall = { name: "call", check: o.ast.meta.check, evaluate: o.ast.meta.evaluate };
   const receiver = o.ast.clone(opCall, ["cartoes", [board]]);
   return expandirPara("exists", o, variavelEPredicado(o, resto, "existe"), receiver);
 }
+
+// has(card.x) padrão do CEL veria todo campo como presente, porque campo ausente
+// lê como null. Substituímos a macro nos nós has(...) da árvore para refletir a
+// presença real da chave em props/computed (null presente conta como presente).
+interface ChecadorInterno {
+  check(no: unknown, ctx: unknown): unknown;
+  getType(nome: string): unknown;
+  createError(codigo: string, mensagem: string, no: unknown): Error;
+}
+interface AvaliadorInterno {
+  run(no: unknown, ctx: unknown): unknown;
+}
+
+function presente(obj: unknown, chave: string): boolean {
+  if (obj instanceof Map) return Map.prototype.has.call(obj, chave) && obj.get(chave) !== undefined;
+  if (obj !== null && typeof obj === "object") {
+    return Object.hasOwn(obj, chave) && (obj as Record<string, unknown>)[chave] !== undefined;
+  }
+  return false;
+}
+
+function macroHas(no: ASTNode) {
+  const arg = (no.args as [string, ASTNode[]])[1][0];
+  return {
+    async: false,
+    typeCheck(checker: ChecadorInterno, _m: unknown, ctx: unknown) {
+      if (!arg || arg.op !== ".") throw checker.createError("invalid_macro_argument", "has() exige campo: has(card.x)", no);
+      checker.check(arg.args[0], ctx);
+      return checker.getType("bool");
+    },
+    evaluate(ev: AvaliadorInterno, _m: unknown, ctx: unknown) {
+      const [obj, chave] = arg.args as [ASTNode, string];
+      return presente(ev.run(obj, ctx), chave);
+    },
+  };
+}
+
+function substituirHas(no: ASTNode) {
+  if (no.op === "call" && no.args[0] === "has" && no.args[1].length === 1) {
+    const interno = no as unknown as NoInterno;
+    exigirInterno(typeof interno.setMeta === "function", "ast.setMeta");
+    interno.setMeta("macro", macroHas(no));
+  }
+  for (const f of filhosDoNo(no)) substituirHas(f);
+}
+
+// ---------------------------------------------------------------------------
+// Limites estruturais (proteção contra expressões gigantes ou aninhadas demais)
+// ---------------------------------------------------------------------------
+
+export const LIMITES = {
+  /** Tamanho máximo do texto da expressão, em caracteres. */
+  caracteres: 20_000,
+  /** Profundidade máxima de aninhamento (parênteses, chamadas, ternários). */
+  profundidade: 40,
+  /** Número máximo de nós da árvore. */
+  nos: 2_000,
+  elementosLista: 500,
+  entradasMapa: 200,
+  argumentosChamada: 16,
+} as const;
+
+const NOME_LIMITE: Record<string, [string, number]> = {
+  maxDepth: ["profundidade", LIMITES.profundidade],
+  maxAstNodes: ["nós", LIMITES.nos],
+  maxListElements: ["elementos de lista", LIMITES.elementosLista],
+  maxMapEntries: ["entradas de mapa", LIMITES.entradasMapa],
+  maxCallArguments: ["argumentos por chamada", LIMITES.argumentosChamada],
+};
 
 // ---------------------------------------------------------------------------
 // Ambiente CEL (singleton: instanciar é caro)
 // ---------------------------------------------------------------------------
 
 function criarAmbiente(): Environment {
-  const env = new Environment({ unlistedVariablesAreDyn: false, homogeneousAggregateLiterals: false })
+  const env = new Environment({
+    unlistedVariablesAreDyn: false,
+    homogeneousAggregateLiterals: false,
+    limits: {
+      maxDepth: LIMITES.profundidade,
+      maxAstNodes: LIMITES.nos,
+      maxListElements: LIMITES.elementosLista,
+      maxMapEntries: LIMITES.entradasMapa,
+      maxCallArguments: LIMITES.argumentosChamada,
+    },
+  })
     .registerType("Registro", RegistroExpr)
     .registerVariable("card", "Registro")
     .registerVariable("pai", "dyn")
@@ -531,6 +632,11 @@ function posicaoErro(e: { range?: { start: number; end: number } }): Posicao | u
 
 function converterErro(e: unknown): ExprError {
   if (e instanceof ExprError) return e;
+  if (e instanceof ParseError && e.code === "limit_exceeded") {
+    const chave = /Exceeded (\w+)/.exec(e.summary)?.[1] ?? "";
+    const [nome, valor] = NOME_LIMITE[chave] ?? ["tamanho", 0];
+    return new ExprError(`expressão excede o limite de ${nome} (${valor})`, "sintaxe", posicaoErro(e));
+  }
   if (e instanceof ParseError) return new ExprError(e.summary, "sintaxe", posicaoErro(e));
   if (e instanceof CelTypeError) return new ExprError(e.summary, "tipo", posicaoErro(e));
   if (e instanceof EvaluationError) return new ExprError(e.summary, "avaliacao", posicaoErro(e));
@@ -546,10 +652,17 @@ function analisar(fonte: string) {
   if (typeof fonte !== "string" || fonte.trim() === "") {
     throw new ExprError("expressão vazia", "sintaxe", { inicio: 0, fim: 0 });
   }
+  if (fonte.length > LIMITES.caracteres) {
+    throw new ExprError(`expressão excede o limite de caracteres (${LIMITES.caracteres})`, "sintaxe", {
+      inicio: LIMITES.caracteres,
+      fim: fonte.length,
+    });
+  }
   const env = obterAmbiente();
   let programa: ReturnType<Environment["parse"]>;
   try {
     programa = env.parse(fonte);
+    substituirHas(programa.ast);
   } catch (e) {
     throw converterErro(e);
   }
