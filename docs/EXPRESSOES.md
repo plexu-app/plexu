@@ -16,7 +16,14 @@ A implementação usa a biblioteca [`@marcbachmann/cel-js`](https://www.npmjs.co
 | `existe(<board>, x, cond)` | bool | Algum card do board satisfaz `cond`. Forma curta: `existe(<board>, cond)` usando `item`. |
 | `fase`, `fase_origem`, `fase_destino` | string ou null | Fase atual e, em transições, origem e destino. |
 | `usuario` | registro | Quem dispara a ação (`usuario.id`, `usuario.email`, ...). |
-| `hoje()` | string | Data local do servidor em `AAAA-MM-DD`; comparável com campos de data. |
+| `hoje()` | string | Data em `AAAA-MM-DD` no fuso do workspace (`settings.timezone`) quando avaliada pelo core; comparável com campos de data. |
+
+Resolução de `filhos`/`pais`/`pai` a partir das ligações (`card_links`, campo de relação no board de origem):
+
+- Relação com `is_parent`: o card de origem é filho, o de destino é pai. O filho vê `pai` e `pais(<slug do campo>)`; o pai vê `filhos(<inverse_name>)` (ou o slug do campo).
+- Relação comum: o card de origem vê os destinos em `filhos(<slug do campo>)`; o destino vê a origem em `pais(<inverse_name>)` (ou o slug).
+
+Registros de card (inclusive itens de listas) trazem os campos por slug e, quando não colidem com um slug, `id`, `titulo`, `fase` (nome) e `status`. Campo de relação lê como a lista de ids ligados a partir do card.
 
 Métodos de lista:
 

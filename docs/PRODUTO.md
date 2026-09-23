@@ -122,6 +122,7 @@ Cadastro único de parceiros (dedup por raiz CNPJ), Gestão contratual + Parcela
 14. `sequence` — regra por board/campo: **formato** (`CT-{n:4}/{ano}`), **escopo** (global | ano | mês | dia | pai), **semente** (início), **zeros à esquerda**, **encadeamento** (`{pai.numero}-v{n}`). Ver exemplos em schema.sql.
 15. Contexto das expressões (regras, condições, visibilidade, fórmulas): `card`, `pai`/`pais(conexão)`, `filhos(conexão)` com `todos/algum/contar/soma`, `fase`, `fase_origem`, `fase_destino`, `usuario`, `existe(board, filtro)`. Nomes PT-BR na UI; CEL por baixo.
 16. Equipe: 1 dev + colaboradores eventuais → MVP enxuto (seção 10).
+17. Exclusão lógica de card **não** remove `card_links`: a ligação fica inativa (`card_links.deleted_at` espelhado) e volta ao restaurar o card. Relação exclusiva, rollups, `filhos()`/`pais()` e cardinalidade ignoram cards com `deleted_at`. Motivo: restaurar um card devolve suas relações sem reconstrução manual, e o índice único parcial da exclusiva continua garantido pelo banco.
 
 ## 8. Referência Pipefy — catálogo de capacidades (doc pública developers.pipefy.com, set/2026)
 Índice completo em `https://developers.pipefy.com/llms.txt` (markdown por página; OpenAPI). Usar como checklist de paridade.
@@ -200,6 +201,6 @@ Fonte: levantamento de telas de configuração + metadados via API. Observação
 - Eventos imutáveis + tela de histórico do card.
 - API REST v1 (OpenAPI) com service account. Docker compose. PT-BR.
 
-**Fica para v1**: groups/roles/permissions finas, approvals, tags, tasks, forms públicos, portals, webhooks, connections/variables, calendars/SLA, snapshots/sandbox, templates, extensions, calendário/timeline/gantt/dashboard, automação em modo Fluxo, e-mail.
+**Fica para v1**: `can_back` com `on_fail.children` = `cancel`/`delete` (MVP só `block`/`keep`), groups/roles/permissions finas, approvals, tags, tasks, forms públicos, portals, webhooks, connections/variables, calendars/SLA, snapshots/sandbox, templates, extensions, calendário/timeline/gantt/dashboard, automação em modo Fluxo, e-mail.
 
 **Stack (decisão)**: TypeScript ponta a ponta. Next.js (App Router) + Drizzle + Postgres; cel-js para expressões; fila em Postgres (pg-boss) — sem Redis no MVP. UI: Tailwind + shadcn + dnd-kit + TanStack Table.

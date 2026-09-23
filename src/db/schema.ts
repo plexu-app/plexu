@@ -1,7 +1,8 @@
-// Drizzle schema — espelha src/db/migrations/0000_init.sql (MVP). Modelo completo em docs/schema.sql.
+// Drizzle schema — espelha src/db/migrations/*.sql (MVP). Modelo completo em docs/schema.sql.
 import {
   pgTable, uuid, text, jsonb, timestamp, integer, boolean, bigint, primaryKey, uniqueIndex, index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 const id = () => uuid("id").primaryKey().defaultRandom();
 const ts = (name: string) => timestamp(name, { withTimezone: true });
@@ -113,9 +114,12 @@ export const cardLinks = pgTable("card_links", {
   toCardId: uuid("to_card_id").notNull().references(() => cards.id, { onDelete: "cascade" }),
   position: integer("position").notNull().default(0),
   createdAt: ts("created_at").notNull().defaultNow(),
+  // Espelha cards.deleted_at de uma das pontas (decisão 17). Ligação inativa é ignorada em tudo.
+  deletedAt: ts("deleted_at"),
 }, (t) => [
   uniqueIndex("card_links_uniq").on(t.fieldId, t.fromCardId, t.toCardId),
   index("card_links_to_idx").on(t.toCardId),
+  index("card_links_ativos_to_idx").on(t.toCardId).where(sql`deleted_at is null`),
 ]);
 
 export const sequences = pgTable("sequences", {
