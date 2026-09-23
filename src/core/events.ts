@@ -22,7 +22,8 @@ export type EventoCard =
     }
   | { type: "card.link_added"; data: DadosLink }
   | { type: "card.link_removed"; data: DadosLink }
-  | { type: "card.deleted"; data: { phase_id: string | null } };
+  | { type: "card.deleted"; data: { phase_id: string | null } }
+  | { type: "card.restored"; data: { phase_id: string | null } };
 
 export type TipoEvento = EventoCard["type"];
 

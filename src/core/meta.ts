@@ -189,14 +189,14 @@ export interface Ligacao {
   toCardId: string;
 }
 
-/** Ligações que tocam os cards (nos dois lados), com o campo de relação já resolvido. */
+/** Ligações ativas que tocam os cards (nos dois lados), com o campo de relação já resolvido. */
 export async function lerLigacoes(op: Op, cardIds: string[]): Promise<Ligacao[]> {
   if (!cardIds.length) return [];
   const rows = await op.tx
     .select({ id: cardLinks.id, fieldId: cardLinks.fieldId, from: cardLinks.fromCardId, to: cardLinks.toCardId, boardId: fields.boardId })
     .from(cardLinks)
     .innerJoin(fields, eq(fields.id, cardLinks.fieldId))
-    .where(or(inArray(cardLinks.fromCardId, cardIds), inArray(cardLinks.toCardId, cardIds)))
+    .where(and(isNull(cardLinks.deletedAt), or(inArray(cardLinks.fromCardId, cardIds), inArray(cardLinks.toCardId, cardIds))))
     .orderBy(asc(cardLinks.position), asc(cardLinks.createdAt));
   const saida: Ligacao[] = [];
   for (const r of rows) {

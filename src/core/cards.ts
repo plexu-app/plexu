@@ -1,9 +1,9 @@
 // Único caminho de escrita em cards (invariante 1). Cada operação:
 // transação → regras → escrita → recálculo de computed → eventos (mesma transação) → retorno.
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, isNotNull, isNull, ne, or } from "drizzle-orm";
 import { db } from "../db";
-import { cardLinks, cards } from "../db/schema";
-import { emitirEvento, type DadosLink, type OrigemEvento } from "./events";
+import { cardLinks, cards, fields } from "../db/schema";
+import { emitirEvento, type OrigemEvento } from "./events";
 import {
   aplicarPadroes,
   atribuirSequencias,
@@ -109,7 +109,7 @@ async function inserirLigacao(op: Op, campo: Campo, de: CardRow, para: CardRow):
   const [{ n }] = await op.tx
     .select({ n: count() })
     .from(cardLinks)
-    .where(and(eq(cardLinks.fieldId, campo.id), eq(cardLinks.fromCardId, de.id)));
+    .where(and(eq(cardLinks.fieldId, campo.id), eq(cardLinks.fromCardId, de.id), isNull(cardLinks.deletedAt)));
   if (cfg.cardinality === "one" && n > 0) {
     throw new CoreError("relacao_invalida", `relação '${campo.name}' aceita um único card`, { campos: [campo.id] });
   }
@@ -118,7 +118,7 @@ async function inserirLigacao(op: Op, campo: Campo, de: CardRow, para: CardRow):
     const [outro] = await op.tx
       .select({ from: cardLinks.fromCardId })
       .from(cardLinks)
-      .where(and(eq(cardLinks.fieldId, campo.id), eq(cardLinks.toCardId, para.id)));
+      .where(and(eq(cardLinks.fieldId, campo.id), eq(cardLinks.toCardId, para.id), isNull(cardLinks.deletedAt)));
     if (outro && outro.from !== de.id) {
       throw new CoreError(
         "relacao_exclusiva",
@@ -137,12 +137,12 @@ async function inserirLigacao(op: Op, campo: Campo, de: CardRow, para: CardRow):
   return link.id;
 }
 
-async function removerLigacao(op: Op, l: Ligacao, motivo?: DadosLink["motivo"]): Promise<void> {
+async function removerLigacao(op: Op, l: Ligacao): Promise<void> {
   const removidas = await op.tx.delete(cardLinks).where(eq(cardLinks.id, l.linkId)).returning({ id: cardLinks.id });
   if (!removidas.length) return;
   const [de] = await op.tx.select().from(cards).where(eq(cards.id, l.fromCardId));
   const [para] = await op.tx.select().from(cards).where(eq(cards.id, l.toCardId));
-  await eventosLigacao(op, "card.link_removed", l.campo.id, l.linkId, de, para, motivo);
+  await eventosLigacao(op, "card.link_removed", l.campo.id, l.linkId, de, para);
 }
 
 async function eventosLigacao(
@@ -152,9 +152,8 @@ async function eventosLigacao(
   linkId: string,
   de: CardRow,
   para: CardRow,
-  motivo?: DadosLink["motivo"],
 ): Promise<void> {
-  const base = { field_id: fieldId, link_id: linkId, from_card_id: de.id, to_card_id: para.id, motivo };
+  const base = { field_id: fieldId, link_id: linkId, from_card_id: de.id, to_card_id: para.id };
   await emitirEvento(op.tx, origemDe(op, de), { type, data: { ...base, lado: "origem" } });
   await emitirEvento(op.tx, origemDe(op, para), { type, data: { ...base, lado: "destino" } });
 }
@@ -392,7 +391,7 @@ export function unlinkCards(input: LinkInput, opts?: OpcoesOp): Promise<{ removi
 }
 
 // ---------------------------------------------------------------------------
-// deleteCard (soft)
+// deleteCard / restoreCard (exclusão lógica, decisão 17)
 // ---------------------------------------------------------------------------
 
 export interface DeleteCardInput {
@@ -400,7 +399,11 @@ export interface DeleteCardInput {
   actor: Actor;
 }
 
-/** Exclusão lógica: can_delete, remove as ligações (com eventos) e marca deleted_at. */
+/**
+ * Exclusão lógica: can_delete e deleted_at no card. As ligações NÃO são removidas: ficam inativas
+ * (card_links.deleted_at = mesmo instante) e passam a ser ignoradas por relação exclusiva, rollups,
+ * filhos()/pais() e cardinalidade. restoreCard as reativa.
+ */
 export function deleteCard(input: DeleteCardInput, opts?: OpcoesOp): Promise<CardRow> {
   return executar(input.actor, opts, async (op) => {
     const card = await lerCard(op, input.cardId, true);
@@ -408,16 +411,102 @@ export function deleteCard(input: DeleteCardInput, opts?: OpcoesOp): Promise<Car
     const ligs = await lerLigacoes(op, [card.id]);
     exigir(await canDelete(op, { quadro: q, card: vistaDe(card), ligacoes: ligs }));
 
-    for (const l of ligs) await removerLigacao(op, l, "card_deleted");
+    const agora = new Date();
     const [excluido] = await op.tx
       .update(cards)
-      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .set({ deletedAt: agora, updatedAt: agora })
       .where(eq(cards.id, card.id))
       .returning();
+    await op.tx
+      .update(cardLinks)
+      .set({ deletedAt: agora })
+      .where(and(isNull(cardLinks.deletedAt), or(eq(cardLinks.fromCardId, card.id), eq(cardLinks.toCardId, card.id))));
     await emitirEvento(op.tx, origemDe(op, card), { type: "card.deleted", data: { phase_id: card.phaseId } });
-    const outros = ligs.map((l) => (l.fromCardId === card.id ? l.toCardId : l.fromCardId)).filter((id) => id !== card.id);
-    await recalcular(op, outros);
+    await recalcular(op, outrasPontas(ligs, card.id));
     return excluido;
+  });
+}
+
+const outrasPontas = (ligs: { fromCardId: string; toCardId: string }[], id: string) =>
+  [...new Set(ligs.map((l) => (l.fromCardId === id ? l.toCardId : l.fromCardId)))].filter((x) => x !== id);
+
+export interface RestoreCardInput {
+  cardId: string;
+  actor: Actor;
+}
+
+/**
+ * Restaura um card excluído e reativa as ligações inativadas pela exclusão dele.
+ * Ligação cuja outra ponta está excluída continua inativa (volta quando aquela ponta for restaurada).
+ * Falha com erro claro se reativar violaria relação exclusiva, cardinalidade ou unicidade.
+ */
+export function restoreCard(input: RestoreCardInput, opts?: OpcoesOp): Promise<CardRow> {
+  return executar(input.actor, opts, async (op) => {
+    const [card] = await op.tx
+      .select()
+      .from(cards)
+      .where(and(eq(cards.id, input.cardId), isNotNull(cards.deletedAt)))
+      .for("no key update");
+    if (!card) throw new CoreError("nao_encontrado", `card ${input.cardId} não está excluído`);
+    const q = await carregarQuadro(op, card.boardId);
+    await verificarUnicidade(op, q, card.id, new Map(Object.entries(card.props)));
+
+    const inativas = await op.tx
+      .select({ link: cardLinks, boardId: fields.boardId })
+      .from(cardLinks)
+      .innerJoin(fields, eq(fields.id, cardLinks.fieldId))
+      .where(
+        and(
+          eq(cardLinks.deletedAt, card.deletedAt!),
+          or(eq(cardLinks.fromCardId, card.id), eq(cardLinks.toCardId, card.id)),
+        ),
+      );
+
+    const reativar: string[] = [];
+    const outros: string[] = [];
+    for (const { link, boardId } of inativas) {
+      const outroId = link.fromCardId === card.id ? link.toCardId : link.fromCardId;
+      const [outro] = await op.tx.select({ deletedAt: cards.deletedAt }).from(cards).where(eq(cards.id, outroId));
+      if (outro?.deletedAt) {
+        // outra ponta foi excluída depois: a ligação passa a "pertencer" à exclusão dela
+        await op.tx.update(cardLinks).set({ deletedAt: outro.deletedAt }).where(eq(cardLinks.id, link.id));
+        continue;
+      }
+      const campo = (await carregarQuadro(op, boardId)).campoPorId.get(link.fieldId);
+      const cfg = campo ? configRelacao(campo) : {};
+      const ativa = (col: typeof cardLinks.toCardId | typeof cardLinks.fromCardId, valor: string) =>
+        op.tx
+          .select({ id: cardLinks.id, from: cardLinks.fromCardId })
+          .from(cardLinks)
+          .where(and(eq(cardLinks.fieldId, link.fieldId), eq(col, valor), isNull(cardLinks.deletedAt), ne(cardLinks.id, link.id)))
+          .limit(1);
+      if (cfg.exclusive) {
+        const [conflito] = await ativa(cardLinks.toCardId, link.toCardId);
+        if (conflito) {
+          throw new CoreError(
+            "relacao_exclusiva",
+            `não é possível restaurar: relação exclusiva '${campo!.name}' do card ${link.toCardId} já está ligada ao card ${conflito.from}`,
+            { campos: [link.fieldId] },
+          );
+        }
+      }
+      if (cfg.cardinality === "one" && (await ativa(cardLinks.fromCardId, link.fromCardId)).length) {
+        throw new CoreError(
+          "relacao_invalida",
+          `não é possível restaurar: relação '${campo!.name}' do card ${link.fromCardId} já tem outro card ligado`,
+          { campos: [link.fieldId] },
+        );
+      }
+      reativar.push(link.id);
+      outros.push(outroId);
+    }
+
+    const agora = new Date();
+    for (const id of reativar) await op.tx.update(cardLinks).set({ deletedAt: null }).where(eq(cardLinks.id, id));
+    await op.tx.update(cards).set({ deletedAt: null, updatedAt: agora }).where(eq(cards.id, card.id));
+    await emitirEvento(op.tx, origemDe(op, card), { type: "card.restored", data: { phase_id: card.phaseId } });
+    await recalcular(op, [card.id, ...outros]);
+    return lerCard(op, card.id);
   });
 }
 

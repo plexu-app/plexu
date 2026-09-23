@@ -377,7 +377,7 @@ export async function garantirIndiceExclusivo(tx: Tx, fieldId: string): Promise<
   const existe = await tx.execute(sql`select 1 from pg_indexes where indexname = ${nome}`);
   if (!existe.length) {
     await tx.execute(
-      sql.raw(`create unique index if not exists ${nome} on card_links (to_card_id) where field_id = '${fieldId}'`),
+      sql.raw(`create unique index if not exists ${nome} on card_links (to_card_id) where field_id = '${fieldId}' and deleted_at is null`),
     );
   }
   indicesGarantidos.add(nome);

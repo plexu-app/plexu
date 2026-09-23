@@ -1,9 +1,9 @@
 // Testes de integração do core contra Postgres real (DATABASE_URL; padrão: docker compose na 5433).
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { db } from "../../db";
 import { cardLinks, events } from "../../db/schema";
-import { createCard, deleteCard, linkCards, moveCard, unlinkCards, updateFields } from "../cards";
+import { createCard, deleteCard, linkCards, moveCard, restoreCard, unlinkCards, updateFields } from "../cards";
 import { nomeIndiceExclusivo } from "../fields";
 import { dataNoFuso } from "../meta";
 import { CoreError, type Actor, type CardRow } from "../types";
@@ -107,12 +107,13 @@ beforeAll(async () => {
     type: "relation",
     config: { relation: { target_board: N.board, lock_fields_while_linked: [S.campos.descricao] } },
   });
+  S.campos.qtd_notas = await criarCampo(S.board, { slug: "qtd_notas", type: "dynamic_text", config: { dynamic_text: { template: "{size(card.nota)}" } } });
 
   // Propostas: sequences global com semente e por ano; regra can_create
   const pr = await criarBoard(ws, "propostas");
   PR.board = pr.id;
   PR.campos.cliente = await criarCampo(PR.board, { slug: "cliente", type: "text" });
-  PR.campos.numero = await criarCampo(PR.board, { slug: "numero", type: "sequence", config: { sequence: { pattern: "P{n}", scope: "global", seed: 6573, pad: 0 } } });
+  PR.campos.numero = await criarCampo(PR.board, { slug: "numero", type: "sequence", config: { sequence: { pattern: "P{n}", scope: "global", seed: 6572, pad: 0 } } });
   PR.campos.codigo = await criarCampo(PR.board, { slug: "codigo", type: "sequence", config: { sequence: { pattern: "PR-{n:3}/{ano}", scope: "year" } } });
   await criarRegra({ boardId: PR.board, kind: "can_create", expr: 'card.cliente != "bloqueado"', message: "Cliente bloqueado" });
 });
@@ -284,7 +285,7 @@ describe("sequence", () => {
     );
     const globais = criados.map((c) => c.props[PR.campos.numero] as string).sort();
     const anuais = criados.map((c) => c.props[PR.campos.codigo] as string).sort();
-    expect(globais).toEqual(Array.from({ length: 20 }, (_, i) => `P${6573 + i}`).sort());
+    expect(globais).toEqual(Array.from({ length: 20 }, (_, i) => `P${6572 + i}`).sort());
     expect(anuais).toEqual(Array.from({ length: 20 }, (_, i) => `PR-${String(i + 1).padStart(3, "0")}/${ano}`));
   });
 
@@ -421,17 +422,102 @@ describe("updateFields, can_edit e deleteCard", () => {
     expect(e.codigo).toBe("somente_leitura");
   });
 
-  it("can_delete bloqueia; exclusão lógica remove ligações e emite card.deleted", async () => {
+  it("can_delete bloqueia; exclusão lógica mantém ligações (inativas) e emite card.deleted", async () => {
     const c = await novoContrato();
     const p = await novaParcela(c.id);
     expect((await erro(deleteCard({ cardId: c.id, actor }))).ruleId).toBe(C.regras.del);
     const excluida = await deleteCard({ cardId: p.id, actor });
     expect(excluida.deletedAt).toBeInstanceOf(Date);
-    expect(await db.select().from(cardLinks).where(eq(cardLinks.fromCardId, p.id))).toHaveLength(0);
+    const [link] = await db.select().from(cardLinks).where(eq(cardLinks.fromCardId, p.id));
+    expect(link.deletedAt).toEqual(excluida.deletedAt);
     const tipos = (await eventosDe(p.id)).map((x) => x.type);
-    expect(tipos.slice(-2)).toEqual(["card.link_removed", "card.deleted"]);
+    expect(tipos.at(-1)).toBe("card.deleted");
+    expect(tipos).not.toContain("card.link_removed");
     expect((await erro(updateFields({ cardId: p.id, props: { valor: 1 }, actor }))).codigo).toBe("nao_encontrado");
     await deleteCard({ cardId: c.id, actor });
+  });
+});
+
+describe("exclusão lógica e restauração (decisão 17)", () => {
+  const computedDe = async (id: string) =>
+    (await db.execute<{ computed: Record<string, unknown> }>(sql`select computed from cards where id = ${id}`))[0].computed;
+  const linkEntre = async (from: string, to: string) =>
+    (await db.select().from(cardLinks).where(and(eq(cardLinks.fromCardId, from), eq(cardLinks.toCardId, to))))[0];
+
+  it("excluir e restaurar mantém as ligações; excluído não conta em rollup nem em filhos()", async () => {
+    const c = await novoContrato({ assinante: "Beto" });
+    await moveCard({ cardId: c.id, toPhaseId: C.fases.elaboracao, actor });
+    const p1 = await novaParcela(c.id, { valor: 100 });
+    await novaParcela(c.id, { valor: 30 });
+    expect((await computedDe(c.id))[C.campos.qtd]).toBe(2);
+
+    await deleteCard({ cardId: p1.id, actor });
+    expect((await linkEntre(p1.id, c.id)).deletedAt).not.toBeNull();
+    let pai = await computedDe(c.id);
+    expect(pai[C.campos.qtd]).toBe(1);
+    expect(pai[C.campos.total]).toBe(30);
+
+    const restaurada = await restoreCard({ cardId: p1.id, actor });
+    expect(restaurada.deletedAt).toBeNull();
+    expect((await linkEntre(p1.id, c.id)).deletedAt).toBeNull();
+    pai = await computedDe(c.id);
+    expect(pai[C.campos.qtd]).toBe(2);
+    expect(pai[C.campos.total]).toBe(130);
+    expect((await eventosDe(p1.id)).at(-1)?.type).toBe("card.restored");
+    expect((await erro(restoreCard({ cardId: p1.id, actor }))).codigo).toBe("nao_encontrado");
+
+    // filhos() ignora excluídos: com as duas parcelas excluídas, o contrato pode voltar
+    const [p2] = (await db.select().from(cardLinks).where(and(eq(cardLinks.toCardId, c.id), isNull(cardLinks.deletedAt))))
+      .map((l) => l.fromCardId)
+      .filter((id) => id !== p1.id);
+    await deleteCard({ cardId: p1.id, actor });
+    expect((await erro(moveCard({ cardId: c.id, toPhaseId: C.fases.triagem, actor }))).ruleId).toBe(C.regras.back);
+    await deleteCard({ cardId: p2, actor });
+    expect((await moveCard({ cardId: c.id, toPhaseId: C.fases.triagem, actor })).phaseId).toBe(C.fases.triagem);
+  });
+
+  it("card excluído não bloqueia relação exclusiva; restaurar com conflito falha com erro claro", async () => {
+    const c = await novoContrato();
+    const p = await novaParcela(c.id);
+    const n1 = await createCard({ boardId: N.board, props: { parcela: p.id }, actor });
+    const n2 = await createCard({ boardId: N.board, props: {}, actor });
+
+    await deleteCard({ cardId: n1.id, actor });
+    await linkCards({ fieldId: "parcela", fromCardId: n2.id, toCardId: p.id, actor });
+
+    const e = await erro(restoreCard({ cardId: n1.id, actor }));
+    expect(e.codigo).toBe("relacao_exclusiva");
+    expect(e.message).toContain(n2.id);
+
+    await unlinkCards({ fieldId: "parcela", fromCardId: n2.id, toCardId: p.id, actor });
+    await restoreCard({ cardId: n1.id, actor });
+    expect((await linkEntre(n1.id, p.id)).deletedAt).toBeNull();
+    expect((await erro(linkCards({ fieldId: "parcela", fromCardId: n2.id, toCardId: p.id, actor }))).codigo).toBe("relacao_exclusiva");
+  });
+
+  it("campo de relação no registro ignora ligação inativa", async () => {
+    const nota = await createCard({ boardId: N.board, props: {}, actor });
+    const s = await createCard({ boardId: S.board, props: { nota: [nota.id] }, actor });
+    expect(s.computed[S.campos.qtd_notas]).toBe("1");
+    await deleteCard({ cardId: nota.id, actor });
+    expect((await computedDe(s.id))[S.campos.qtd_notas]).toBe("0");
+    await restoreCard({ cardId: nota.id, actor });
+    expect((await computedDe(s.id))[S.campos.qtd_notas]).toBe("1");
+  });
+
+  it("ligação com a outra ponta excluída depois só volta quando as duas pontas forem restauradas", async () => {
+    const c = await novoContrato();
+    const p = await novaParcela(c.id);
+    const n = await createCard({ boardId: N.board, props: { parcela: p.id }, actor });
+
+    await deleteCard({ cardId: n.id, actor });
+    const pExcluida = await deleteCard({ cardId: p.id, actor });
+    await restoreCard({ cardId: n.id, actor });
+    expect((await linkEntre(n.id, p.id)).deletedAt).toEqual(pExcluida.deletedAt);
+
+    await restoreCard({ cardId: p.id, actor });
+    expect((await linkEntre(n.id, p.id)).deletedAt).toBeNull();
+    expect((await linkEntre(p.id, c.id)).deletedAt).toBeNull();
   });
 });
 
