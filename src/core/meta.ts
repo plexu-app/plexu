@@ -210,7 +210,7 @@ export async function lerLigacoes(op: Op, cardIds: string[]): Promise<Ligacao[]>
 // ---------------------------------------------------------------------------
 
 /** Chaves de metadado adicionadas ao registro quando não colidem com slug de campo. */
-const META = ["id", "titulo", "fase", "status"] as const;
+const META = ["id", "titulo", "fase", "fase_id", "status"] as const;
 
 /** Id usado nas ligações de um card ainda não inserido (rascunho de createCard). */
 export const RASCUNHO = "";
@@ -247,6 +247,7 @@ export function registro(q: Quadro, card: VistaCard, ligacoes: Ligacao[] = []): 
     id: card.id,
     titulo: card.title,
     fase: card.phaseId ? q.fasePorId.get(card.phaseId)?.name ?? null : null,
+    fase_id: card.phaseId,
     status: card.status,
   };
   for (const k of META) if (!q.campoPorSlug.has(k)) r[k] = meta[k];
