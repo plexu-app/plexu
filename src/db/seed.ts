@@ -78,10 +78,11 @@ async function main() {
       await cfg(bc.id, "phase", p.id, { name: f.name });
     }
     const cNumero = await campo(bc.id, "numero", "Número", "sequence", 0, { sequence: { pattern: "CT-{n}/{ano}", scope: "year", seed: 1, pad: 4 } });
-    // Fase de origem: preenchido na Elaboração, somente leitura depois; "Valor pago" aparece a partir da Vigência.
-    const elab = { origin_phase_id: fases["Elaboração"] };
+    // Fases de preenchimento (decisão 18-revisada): dados do contrato na Elaboração, somente leitura
+    // depois (o contratante pode ser corrigido em qualquer fase); "Valor pago" aparece a partir da Vigência.
+    const elab = { fill_phases: [fases["Elaboração"]] };
     const cObjeto = await campo(bc.id, "objeto", "Objeto", "text", 1, elab);
-    await campo(bc.id, "contratante", "Contratante", "text", 2, elab);
+    await campo(bc.id, "contratante", "Contratante", "text", 2, { ...elab, editable_everywhere: true });
     await campo(bc.id, "cnpj", "CNPJ", "cnpj", 3, elab);
     const cParcelas = await campo(bc.id, "parcelas", "Parcelas", "relation", 4, {
       relation: { target_board: bp.id, cardinality: "many", exclusive: true, inverse_name: "contrato" },
@@ -90,7 +91,7 @@ async function main() {
     await campo(bc.id, "qtd_parcelas", "Qtd. parcelas", "rollup", 5, { ...elab, rollup: { via_field: cParcelas, agg: "count" } });
     await campo(bc.id, "valor_global", "Valor global", "rollup", 6, { ...elab, rollup: { via_field: cParcelas, agg: "sum", expr: "valor", format: "currency" } });
     await campo(bc.id, "valor_pago", "Valor pago", "rollup", 7, {
-      origin_phase_id: fases["Vigente"],
+      fill_phases: [fases["Vigente"]],
       rollup: { via_field: cParcelas, agg: "sum", expr: "valor", filter_expr: "card.paga == true", format: "currency" },
     });
     await campo(bc.id, "resumo", "Resumo", "dynamic_text", 8, { ...elab, dynamic_text: { template: "{numero} · {qtd_parcelas} parcela(s)" } });

@@ -33,7 +33,7 @@ export interface ContextoConfig {
   relacoes: Map<string, { boardId: string; target: string }>;
   /** campos do próprio board (id e slug), para parent_field e lock */
   campos: { id: string; slug: string; type: string }[];
-  /** fases ativas do board, para origin_phase_id (ausente: origem não é aceita) */
+  /** fases ativas do board, para fill_phases (ausente: fases não são aceitas) */
   fases?: Set<string>;
 }
 
@@ -46,15 +46,18 @@ const inteiro = (v: unknown, padrao: number, min: number, max: number, nome: str
 };
 
 /**
- * Valida e normaliza config conforme o tipo, mais a fase de origem (origin_phase_id, qualquer tipo).
+ * Valida e normaliza config conforme o tipo, mais as fases de preenchimento (fill_phases,
+ * editable_everywhere; qualquer tipo; decisão 18-revisada). origin_phase_id legado vira fill_phases.
  * Lança ErroConfigCampo com mensagem clara.
  */
 export function normalizarConfig(tipo: string, bruto: unknown, ctx: ContextoConfig): Record<string, unknown> {
   const config = normalizarPorTipo(tipo, bruto, ctx);
-  const origem = texto((bruto as { origin_phase_id?: unknown } | null)?.origin_phase_id);
-  if (!origem) return config;
-  if (!ctx.fases?.has(origem)) throw new ErroConfigCampo("fase de origem inválida");
-  return { ...config, origin_phase_id: origem };
+  const b = (bruto && typeof bruto === "object" ? bruto : {}) as { fill_phases?: unknown; origin_phase_id?: unknown; editable_everywhere?: unknown };
+  const lista = Array.isArray(b.fill_phases) ? b.fill_phases.map(texto) : [texto(b.origin_phase_id)];
+  const fases = [...new Set(lista.filter(Boolean))];
+  if (!fases.length) return config;
+  for (const f of fases) if (!ctx.fases?.has(f)) throw new ErroConfigCampo("fase de preenchimento inválida");
+  return { ...config, fill_phases: fases, ...(b.editable_everywhere === true ? { editable_everywhere: true } : {}) };
 }
 
 function normalizarPorTipo(tipo: string, bruto: unknown, ctx: ContextoConfig): Record<string, unknown> {

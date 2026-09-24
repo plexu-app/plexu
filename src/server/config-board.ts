@@ -257,8 +257,11 @@ export async function arquivarCampo(a: Alvo, fieldId: string) {
   });
 }
 
-/** Muda só a fase de origem do campo (null = sem origem). Usado ao arrastar o campo entre fases. */
-export async function definirOrigemCampo(a: Alvo, fieldId: string, faseId: string | null) {
+/**
+ * Muda só as fases de preenchimento do campo ([] = todas as fases, comportamento padrão). Usado pela
+ * coluna "Preenchido em" e ao arrastar o campo entre grupos. editable_everywhere fica como está.
+ */
+export async function definirFasesCampo(a: Alvo, fieldId: string, fasesIds: string[]) {
   return db.transaction(async (tx) => {
     await exigirBoardDoWs(tx, a);
     const [f] = await tx
@@ -266,19 +269,23 @@ export async function definirOrigemCampo(a: Alvo, fieldId: string, faseId: strin
       .from(fields)
       .where(and(eq(fields.id, fieldId), eq(fields.boardId, a.boardId), isNull(fields.archivedAt)));
     if (!f) throw new ErroConfig("campo não encontrado");
-    if (faseId) {
-      const [p] = await tx
-        .select({ id: phases.id })
-        .from(phases)
-        .where(and(eq(phases.id, faseId), eq(phases.boardId, a.boardId), isNull(phases.archivedAt)));
-      if (!p) throw new ErroConfig("fase de origem inválida");
-    }
+    const ativas = await tx
+      .select({ id: phases.id, position: phases.position })
+      .from(phases)
+      .where(and(eq(phases.boardId, a.boardId), isNull(phases.archivedAt)));
+    const pedidas = [...new Set(fasesIds.map(String))];
+    if (pedidas.some((id) => !ativas.some((p) => p.id === id))) throw new ErroConfig("fase de preenchimento inválida");
+    const novas = ativas.filter((p) => pedidas.includes(p.id)).sort((x, y) => x.position - y.position).map((p) => p.id);
     const antes = (f.config ?? {}) as Record<string, unknown>;
-    const { origin_phase_id: anterior, ...resto } = antes;
-    if ((anterior ?? null) === faseId) return;
-    const config = faseId ? { ...resto, origin_phase_id: faseId } : resto;
+    const anteriores = Array.isArray(antes.fill_phases) ? (antes.fill_phases as string[]) : [];
+    if (anteriores.length === novas.length && anteriores.every((x, i) => x === novas[i])) return;
+    const resto = { ...antes };
+    delete resto.fill_phases;
+    delete resto.origin_phase_id;
+    if (!novas.length) delete resto.editable_everywhere;
+    const config = novas.length ? { ...resto, fill_phases: novas } : resto;
     await tx.update(fields).set({ config }).where(eq(fields.id, fieldId));
-    await registrar(tx, a, "field", "updated", fieldId, { antes: { origin_phase_id: anterior ?? null }, depois: { origin_phase_id: faseId } });
+    await registrar(tx, a, "field", "updated", fieldId, { antes: { fill_phases: anteriores }, depois: { fill_phases: novas } });
   });
 }
 

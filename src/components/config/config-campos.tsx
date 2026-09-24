@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { Archive, Calculator, GripVertical, Pencil, Plus } from "lucide-react";
-import { ajustarFaseAction, arquivarCampoAction, definirOrigemCampoAction, salvarCampoAction } from "@/app/w/[ws]/b/[board]/settings/actions";
+import { ajustarFaseAction, arquivarCampoAction, definirFasesCampoAction, salvarCampoAction } from "@/app/w/[ws]/b/[board]/settings/actions";
 import { CampoInput } from "@/components/card/campo-input";
 import { ConstrutorCondicoes, type CampoCondicao } from "@/components/condicoes/construtor";
 import { EditorCel } from "@/components/config/editor-cel";
@@ -14,7 +14,7 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, Dia
 import { Input, Label, NativeSelect, Textarea } from "@/components/ui/input";
 import { Badge, Card, CardContent, CardHeader, CardTitle, Table, TBody, Td, Th, THead, Tr } from "@/components/ui/misc";
 import { TIPOS_CAMPO } from "@/lib/config-campos";
-import { origemDoCampo } from "@/lib/fase-origem";
+import { fasesDoCampo } from "@/lib/fases-preenchimento";
 import { exprDoValorFixo, lerValorInicial, TIPOS_DATA, TIPOS_NUMERO, type ModoInicial } from "@/lib/valor-inicial";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +48,7 @@ export interface ContextoCampos {
 const rotuloTipo = new Map(TIPOS_CAMPO.map((t) => [t.tipo, t.rotulo]));
 const calculado = new Set(TIPOS_CAMPO.filter((t) => t.calculado).map((t) => t.tipo));
 const SEM_FASE = "__sem_fase";
+const origemDoCampo = (config: Record<string, unknown>) => fasesDoCampo(config)[0] ?? null;
 
 /** Origem para agrupar: origem que não é fase ativa conta como "todas as fases". */
 function origemNaLista(ctx: ContextoCampos, c: CampoConfig): string | null {
@@ -71,7 +72,7 @@ export function ConfigCampos(ctx: ContextoCampos) {
     setOrigens((o) => ({ ...o, [c.id]: faseId }));
     const fase = ctx.fases.find((f) => f.id === faseId);
     executar(
-      () => definirOrigemCampoAction(ctx.ws, ctx.board, c.id, faseId),
+      () => definirFasesCampoAction(ctx.ws, ctx.board, c.id, faseId ? [faseId] : []),
       fase ? `${c.name}: preenchido em ${fase.name}` : `${c.name}: em todas as fases`,
       undefined,
       () =>
@@ -432,8 +433,8 @@ function EditorCampo({ ctx, campo, fechar }: { ctx: ContextoCampos; campo: Campo
                   const v = e.target.value;
                   setConfig((c) => {
                     const resto = { ...c };
-                    delete resto.origin_phase_id;
-                    return v ? { ...resto, origin_phase_id: v } : resto;
+                    delete resto.fill_phases;
+                    return v ? { ...resto, fill_phases: [v] } : resto;
                   });
                 }}
               >

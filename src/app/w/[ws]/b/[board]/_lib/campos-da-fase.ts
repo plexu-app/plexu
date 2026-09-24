@@ -2,7 +2,7 @@
 // ajuste da fase. Visibilidade e obrigatoriedade são avaliadas sobre os valores digitados
 // (src/lib/campos-criacao.ts), no navegador e de novo no servidor; o core é a palavra final.
 import type { CampoCriacaoDef } from "@/lib/campos-criacao";
-import { ajusteEfetivo } from "@/lib/fase-origem";
+import { ajusteEfetivo } from "@/lib/fases-preenchimento";
 import { TIPOS_CALCULADOS_UI } from "@/lib/formatar";
 import type { BoardCompleto } from "@/server/consultas";
 
@@ -14,7 +14,7 @@ export interface AjusteFase {
   required: boolean | null;
 }
 
-/** Ajuste efetivo: field_phase_settings por cima do padrão da fase de origem (src/lib/fase-origem.ts). */
+/** Ajuste efetivo: field_phase_settings por cima do padrão das fases de preenchimento (src/lib/fases-preenchimento.ts). */
 function ajusteDe(board: Pick<BoardCompleto, "fases">, ajustes: AjusteFase[], c: { id: string; config: Record<string, unknown> }, faseId: string | null) {
   if (!faseId) return undefined;
   return ajusteEfetivo(c.config, board.fases, faseId, ajustes.find((a) => a.fieldId === c.id && a.phaseId === faseId));

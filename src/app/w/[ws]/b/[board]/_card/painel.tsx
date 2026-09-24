@@ -9,7 +9,7 @@ import { SheetCard } from "@/components/card/sheet-card";
 import { SubTabela } from "@/components/card/sub-tabela";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/misc";
 import { montarCartoes } from "@/components/kanban-dados";
-import { origemDoCampo } from "@/lib/fase-origem";
+import { primeiraFase } from "@/lib/fases-preenchimento";
 import { descreverEvento, formatarDataHora, formatarValor, idCurto, TIPOS_CALCULADOS_UI, tituloOu, valorDoCard, type CampoFmt } from "@/lib/formatar";
 import { exigirBoard, exigirCard, exigirMembro } from "@/server/acesso";
 import { ajustesDoBoard } from "@/server/config-board";
@@ -68,8 +68,7 @@ export async function PainelCard({ ws, board, cardId, voltarPara }: { ws: string
   const fase = b.fases.find((f) => f.id === card.phaseId);
   const mapaPessoas = new Map(Object.entries(pessoas));
   const faseAnterior = (c: CampoUI) => {
-    const o = origemDoCampo(c.config);
-    const f = o ? b.fases.find((x) => x.id === o) : undefined;
+    const f = primeiraFase(c.config, b.fases) ?? undefined;
     return fase && f && f.position < fase.position ? f : undefined;
   };
   const visiveis = b.campos.filter((c) => c.type !== "relation" && estado[c.id]?.visivel !== false);
