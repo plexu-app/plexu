@@ -7,6 +7,7 @@ import { emitirEvento, type OrigemEvento } from "./events";
 import {
   aplicarPadroes,
   atribuirSequencias,
+  atualizarCopias,
   garantirIndiceExclusivo,
   nomeIndiceExclusivo,
   normalizarEntrada,
@@ -135,6 +136,7 @@ async function inserirLigacao(op: Op, campo: Campo, de: CardRow, para: CardRow):
     .returning({ id: cardLinks.id });
   if (!link) return null; // já existia
   await eventosLigacao(op, "card.link_added", campo.id, link.id, de, para);
+  await atualizarCopias(op, [de.id, para.id], campo.id);
   return link.id;
 }
 
@@ -144,6 +146,7 @@ async function removerLigacao(op: Op, l: Ligacao): Promise<void> {
   const [de] = await op.tx.select().from(cards).where(eq(cards.id, l.fromCardId));
   const [para] = await op.tx.select().from(cards).where(eq(cards.id, l.toCardId));
   await eventosLigacao(op, "card.link_removed", l.campo.id, l.linkId, de, para);
+  await atualizarCopias(op, [l.fromCardId, l.toCardId], l.campo.id);
 }
 
 async function eventosLigacao(

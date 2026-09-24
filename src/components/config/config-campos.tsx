@@ -754,6 +754,37 @@ function ConfigPorTipo({
         </div>
       );
     }
+    case "lookup": {
+      const l = sub(config, "lookup");
+      const upd = (k: string, v: unknown) => set("lookup", { ...l, [k]: v });
+      return (
+        <div className="grid grid-cols-2 gap-3">
+          <div className={linha}>
+            <Label>Pela relação</Label>
+            <NativeSelect aria-label="Relação do valor relacionado" value={String(l.via_field ?? "")} onChange={(e) => upd("via_field", e.target.value)}>
+              <option value="">—</option>
+              {ctx.relacoesVia.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.rotulo}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+          <div className={linha}>
+            <Label>Campo do card relacionado</Label>
+            <Input aria-label="Campo do card relacionado" className="font-mono" value={String(l.path ?? "")} onChange={(e) => upd("path", e.target.value)} placeholder="nome" />
+            <p className="text-xs text-muted-foreground">Identificador do campo lá, ou titulo, fase, status.</p>
+          </div>
+          <div className={`${linha} col-span-2`}>
+            <Label>Quando o card relacionado muda</Label>
+            <NativeSelect aria-label="Modo do valor relacionado" value={l.mode === "copy" ? "copy" : "ref"} onChange={(e) => upd("mode", e.target.value)}>
+              <option value="ref">acompanha (sempre mostra o valor atual)</option>
+              <option value="copy">fica como estava (copia ao ligar ou trocar o card)</option>
+            </NativeSelect>
+          </div>
+        </div>
+      );
+    }
     case "rollup": {
       const r = sub(config, "rollup");
       const upd = (k: string, v: unknown) => set("rollup", { ...r, [k]: v });

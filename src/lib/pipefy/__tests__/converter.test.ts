@@ -27,6 +27,7 @@ const ITENS: PfExport = {
       campo("descricao", "900", "Descrição", "short_text"),
       campo("valor", "901", "Valor", "currency"),
       campo("aprovado", "902", "Aprovado", "radio_vertical", { options: ["Sim", "Não"] }),
+      campo("cnpj_pedido", "903", "CNPJ do pedido", "cnpj"),
     ],
   },
   automacoes: [],
@@ -61,13 +62,15 @@ const PEDIDOS: PfExport = {
   repo: {
     id: "1001",
     name: "Pedidos de compra",
-    title_field: { id: "titulo" },
+    // Título = conexão: vira lookup do título do card ligado
+    title_field: { id: "principal" },
     start_form_fields: [
       campo("titulo", "1", "Título", "short_text", { required: true }),
       campo("tipo", "2", "Tipo", "radio_vertical", { options: ["Compra", "Serviço"] }),
       campo("cnpj", "3", "CNPJ", "cnpj"),
       campo("aviso", "4", "Leia antes", "statement"),
       campo("fornecedor", "5", "Fornecedor", "connector", { connectedRepo: { id: "3003", name: "Fornecedores" }, canConnectMultiples: false }),
+      campo("principal", "6", "Item principal", "connector", { connectedRepo: { id: "2002", name: "Itens do pedido" }, canConnectMultiples: false }),
     ],
     phases: [
       {
@@ -110,6 +113,14 @@ const PEDIDOS: PfExport = {
         action_params: { to_phase_id: "10" },
       }),
     ),
+    // Cópia de um campo do pedido para cada item: vira lookup "ref" no item
+    ...[1, 2].map((n) =>
+      auto(`cp${n}`, `Copiar CNPJ para o item ${serie(n)}`, {
+        condition: { expressions: [{ structure_id: "0", field_address: `10${n}`, operation: "present", value: "" }], expressions_structure: [["0"]] },
+        action_repo_v2: { id: "2002" },
+        action_params: { field_map: [{ fieldId: "903", inputMode: "copy_from", value: "%{3}" }] },
+      }),
+    ),
     auto("mail", "Avisar solicitante", { event_id: "card_created", action_id: "send_email_template" }),
     ...[1, 2].map((n) => auto(`n${n}`, `Notificar item ${serie(n)}`, { action_id: "send_http_request" })),
   ],
@@ -117,6 +128,7 @@ const PEDIDOS: PfExport = {
 // A API lista a automação também no pipe onde ela age: aparece no export dos itens (duplicada).
 ITENS.automacoes = [PEDIDOS.automacoes.find((a) => a.id === "ap1")!];
 
+const linhas0 = (r: ReturnType<typeof converterPipefy>["relatorio"]) => r.boards[0].automacoes;
 const conv = () => converterPipefy([PEDIDOS, ITENS], { nome: "Pedidos" });
 const board = (key: string) => conv().template.boards.find((b) => b.key === key)!;
 
@@ -136,18 +148,23 @@ describe("converterPipefy", () => {
     expect(f("cnpj")?.type).toBe("cnpj");
     expect(f("aviso")).toBeUndefined(); // statement
     expect(f("observacao")).toMatchObject({ type: "long_text", fill_phases: ["aprovacao"], editable_everywhere: true, visible: 'card.tipo == "Serviço"' });
-    expect(p.title_field).toBe("titulo");
+    expect(p.title_field).toBe("item_principal_titulo");
+    expect(f("item_principal_titulo")).toMatchObject({ type: "lookup", lookup: { via: "item_principal", path: "titulo", mode: "ref" } });
+    // Conexão de 1 card: cardinality one, nunca exclusiva (só por opção explícita no template)
+    expect(f("item_principal")?.relation).toEqual({ board: "itens-do-pedido", cardinality: "one" });
   });
 
   it("série de conexões numeradas vira relação 1:N; série de campos alinhada vira o campo do filho", () => {
     const p = board("pedidos-de-compra");
     expect(p.fields.find((f) => f.key === "items")).toMatchObject({
       type: "relation",
-      relation: { board: "itens-do-pedido", cardinality: "many", exclusive: true },
+      relation: { board: "itens-do-pedido", cardinality: "many" },
     });
     expect(p.fields.some((f) => /item_0|aprovar/.test(f.key))).toBe(false);
     // "Aprovar item NN" era copiado para itens.aprovado: nenhum campo novo no filho
-    expect(board("itens-do-pedido").fields.map((f) => f.key)).toEqual(["descricao", "valor", "aprovado"]);
+    expect(board("itens-do-pedido").fields.map((f) => f.key)).toEqual(["descricao", "valor", "aprovado", "cnpj_do_pedido"]);
+    // Cópia do pedido para cada item → lookup ref no item, pela relação da série
+    expect(board("itens-do-pedido").fields.find((f) => f.key === "cnpj_do_pedido")).toMatchObject({ type: "lookup", lookup: { via: "pedidos-de-compra.items", path: "cnpj", mode: "ref" } });
   });
 
   it("fórmulas: SUM sobre a série vira rollup; SUBTRACT entre campos do card vira texto calculado", () => {
@@ -173,7 +190,8 @@ describe("converterPipefy", () => {
     const p = template.boards[0];
     expect(p.automations?.map((a) => a.name)).toEqual(["Avisar solicitante", "Notificar item N (série de 2)"]);
     expect(template.boards[1].automations).toBeUndefined();
-    expect(relatorio.totais).toMatchObject({ automacoes: 12, regras: 1, rollups: 1, textosCalculados: 1, absorvidas: 3, pendentes: 2 });
+    expect(relatorio.totais).toMatchObject({ automacoes: 14, regras: 1, rollups: 1, textosCalculados: 1, lookups: 2, absorvidas: 3, pendentes: 2 });
+    expect(linhas0(relatorio).filter((l) => l.destino === "lookup").map((l) => l.ref)).toEqual(["itens-do-pedido.cnpj_do_pedido", "itens-do-pedido.cnpj_do_pedido"]);
     const linhas = relatorio.boards[0].automacoes;
     expect(linhas.filter((l) => l.destino === "rollup").map((l) => l.ref)).toEqual(["total", "total", "total"]);
     expect(linhas.find((l) => l.origem === "Calcular saldo")?.destino).toBe("dynamic_text");
@@ -186,7 +204,7 @@ describe("converterPipefy", () => {
     expect(r.naoRepresentado.map((n) => n.item)).toEqual(expect.arrayContaining(["Leia antes", "Fornecedor"]));
     expect(r.condicionais).toEqual({ total: 1, convertidas: 1, naoConvertidas: [] });
     const md = relatorioMarkdown(relatorio);
-    expect(md).toContain("12 automações no Pipefy");
+    expect(md).toContain("14 automações no Pipefy");
     expect(md).toContain("| Pedidos de compra (pipe) |");
   });
 

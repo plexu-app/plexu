@@ -23,7 +23,24 @@ Resolução de `filhos`/`pais`/`pai` a partir das ligações (`card_links`, camp
 - Relação com `is_parent`: o card de origem é filho, o de destino é pai. O filho vê `pai` e `pais(<slug do campo>)`; o pai vê `filhos(<inverse_name>)` (ou o slug do campo).
 - Relação comum: o card de origem vê os destinos em `filhos(<slug do campo>)`; o destino vê a origem em `pais(<inverse_name>)` (ou o slug).
 
-Registros de card (inclusive itens de listas) trazem os campos por slug e, quando não colidem com um slug, `id`, `titulo`, `fase` (nome) e `status`. Campo de relação lê como a lista de ids ligados a partir do card.
+Registros de card — `card`, `pai` e cada item de `filhos()`, `pais()` e `cartoes()` — trazem os campos por slug e estes metadados:
+
+| Chave | Valor |
+|---|---|
+| `id` | id do card (uuid) |
+| `titulo` | título do card |
+| `fase` | nome da fase atual (null em board sem fases) |
+| `fase_id` | id da fase atual (null em board sem fases) |
+| `status` | `"open"`, `"done"` ou `"canceled"` |
+
+Um campo com o mesmo slug de um metadado tem precedência (o metadado não aparece). Campo de relação lê como a lista de ids ligados a partir do card. Exemplos com os itens de uma lista:
+
+```
+filhos("parcelas").todos(p, p.fase == "Paga")          // todas as parcelas na fase "Paga"
+filhos("parcelas").algum(p, p.status == "open")        // alguma parcela em aberto
+pais("contrato").algum(c, c.titulo.startsWith("CT-"))
+cartoes("fornecedores").algum(f, f.id == card.fornecedor[0])
+```
 
 Métodos de lista:
 

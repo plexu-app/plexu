@@ -210,7 +210,7 @@ export async function lerLigacoes(op: Op, cardIds: string[]): Promise<Ligacao[]>
 // ---------------------------------------------------------------------------
 
 /** Chaves de metadado adicionadas ao registro quando não colidem com slug de campo. */
-const META = ["id", "titulo", "fase", "status"] as const;
+const META = ["id", "titulo", "fase", "fase_id", "status"] as const;
 
 /** Id usado nas ligações de um card ainda não inserido (rascunho de createCard). */
 export const RASCUNHO = "";
@@ -240,24 +240,34 @@ export function registro(q: Quadro, card: VistaCard, ligacoes: Ligacao[] = []): 
       r[c.slug] = ligacoes.filter((l) => l.campo.id === c.id && l.fromCardId === eu).map((l) => l.toCardId);
       continue;
     }
-    const v = TIPOS_CALCULADOS.has(c.type) ? card.computed[c.id] : card.props[c.id];
+    const v = valorBruto(c, card);
     if (v !== undefined) r[c.slug] = v;
   }
   const meta: Record<(typeof META)[number], unknown> = {
     id: card.id,
     titulo: card.title,
     fase: card.phaseId ? q.fasePorId.get(card.phaseId)?.name ?? null : null,
+    fase_id: card.phaseId,
     status: card.status,
   };
   for (const k of META) if (!q.campoPorSlug.has(k)) r[k] = meta[k];
   return r;
 }
 
+/**
+ * Valor armazenado de um campo: calculados em computed, o resto em props. Lookup: modo "ref" fica em
+ * computed; modo "copy" é gravado em props no momento da ligação.
+ */
+export function valorBruto(c: Pick<Campo, "id" | "type">, card: { props: Record<string, unknown>; computed: Record<string, unknown> }): unknown {
+  if (c.type === "lookup") return card.computed[c.id] ?? card.props[c.id];
+  return TIPOS_CALCULADOS.has(c.type) ? card.computed[c.id] : card.props[c.id];
+}
+
 /** Valor do título a partir do campo de título do board. */
 export function tituloDe(q: Quadro, props: Record<string, unknown>, computed: Record<string, unknown>): string {
   if (!q.titleFieldId) return "";
   const c = q.campoPorId.get(q.titleFieldId);
-  const v = c && TIPOS_CALCULADOS.has(c.type) ? computed[q.titleFieldId] : props[q.titleFieldId];
+  const v = c ? valorBruto(c, { props, computed }) : props[q.titleFieldId];
   if (vazio(v)) return "";
   return Array.isArray(v) ? v.join(", ") : String(v);
 }

@@ -28,7 +28,7 @@ function main() {
   writeFileSync(arqRel, relatorioMarkdown(relatorio));
   const t = relatorio.totais;
   console.log(`template → ${saida}\nrelatório → ${arqRel}`);
-  console.log(`${t.automacoes} automações → ${t.regras} regras + ${t.rollups} rollups + ${t.textosCalculados} textos calculados; ${t.absorvidas} absorvidas; ${t.pendentes} pendentes`);
+  console.log(`${t.automacoes} automações → ${t.regras} regras + ${t.rollups} rollups + ${t.textosCalculados} textos calculados + ${t.lookups} lookups; ${t.absorvidas} absorvidas; ${t.pendentes} pendentes`);
   if (erros.length) {
     console.error(`atenção: o template gerado tem ${erros.length} problema(s) de validação:`);
     for (const e of erros.slice(0, 20)) console.error(`  ${e.onde}: ${e.mensagem}`);

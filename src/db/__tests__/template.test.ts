@@ -44,6 +44,7 @@ const TEMPLATE: Template = {
       fields: [
         { key: "descricao", name: "Descrição", type: "text" },
         { key: "valor", name: "Valor", type: "currency", currency: { code: "BRL" } },
+        { key: "objeto_pedido", name: "Objeto do pedido", type: "lookup", lookup: { via: "pedidos.itens", path: "objeto", mode: "ref" } },
       ],
     },
   ],
@@ -92,6 +93,12 @@ describe("importarTemplate", () => {
     const { cards } = await import("../schema");
     const [lido] = await db.select().from(cards).where(eq(cards.id, p.id));
     expect(lido.computed[await idDe("total")]).toBe(350.5);
+    // Lookup pela relação de outro board: o item lê o objeto do pedido
+    const [item] = await db.select().from(cards).where(eq(cards.id, i1.id));
+    const { fields } = await import("../schema");
+    const { and } = await import("drizzle-orm");
+    const [lk] = await db.select().from(fields).where(and(eq(fields.boardId, itens), eq(fields.slug, "objeto_pedido")));
+    expect(item.computed[lk.id]).toBe("Cadeiras");
     expect(ex.boards).toHaveLength(2);
   });
 
