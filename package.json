@@ -14,7 +14,11 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/db/seed.ts",
     "e2e": "playwright test",
-    "worker": "tsx src/worker/index.ts"
+    "worker": "tsx src/worker/index.ts",
+    "pipefy:export": "tsx scripts/pipefy-export.ts",
+    "pipefy:to-template": "tsx scripts/pipefy-to-template.ts",
+    "template:import": "tsx scripts/template-import.ts",
+    "template:export": "tsx scripts/template-export.ts"
   },
   "license": "AGPL-3.0-only",
   "packageManager": "pnpm@10.28.0",
