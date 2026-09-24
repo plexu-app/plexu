@@ -9,3 +9,6 @@ pgdata
 *.tsbuildinfo
 playwright-report
 test-results
+
+# Exports de ferramentas externas (ex.: Pipefy). Dados de usuário: nunca versionar.
+exports/
