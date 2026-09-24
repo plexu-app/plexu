@@ -188,6 +188,26 @@ describe("createCard", () => {
     }
   });
 
+  it("criar na fase inicial exige os obrigatórios dela (field_phase_settings)", async () => {
+    const e = await erro(createCard({ boardId: C.board, props: { assinante: "x" }, actor }));
+    expect(e.codigo).toBe("obrigatorio");
+    expect(e.campos).toEqual([C.campos.objeto]);
+    expect((await novoContrato()).phaseId).toBe(C.fases.triagem);
+  });
+
+  it("required_expr vale na criação; em board sem fases é avaliada com fase = null", async () => {
+    const w = await criarWorkspace();
+    const b = await criarBoard(w.ws.id, "cadastro");
+    const cnpj = await criarCampo(b.id, { slug: "doc", type: "text", name: "Documento", requiredExpr: "true" });
+    const obs = await criarCampo(b.id, { slug: "obs", type: "text", requiredExpr: "fase == null && card.doc == \"x\"" });
+    let e = await erro(createCard({ boardId: b.id, props: {}, actor: w.actor }));
+    expect(e.campos).toEqual([cnpj]);
+    e = await erro(createCard({ boardId: b.id, props: { doc: "x" }, actor: w.actor }));
+    expect(e.campos).toEqual([obs]);
+    const ok = await createCard({ boardId: b.id, props: { doc: "y" }, actor: w.actor });
+    expect(ok.props[cnpj]).toBe("y");
+  });
+
   it("criar fora da primeira fase exige obrigatórios das fases anteriores", async () => {
     const e = await erro(createCard({ boardId: C.board, phaseId: C.fases.assinatura, props: {}, actor }));
     expect(e.codigo).toBe("obrigatorio");
