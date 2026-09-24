@@ -41,10 +41,23 @@ pnpm dev
 
 Na primeira visita a `http://localhost:3000`, com o banco sem usuários, a tela **Primeiro acesso** cria o workspace e a conta owner. Defina `APP_SECRET` (16+ caracteres aleatórios) no `.env`: ele assina o cookie de sessão e é obrigatório em produção.
 
+Dados de demonstração (caso de aceitação do MVP: Contratos → Parcelas, com sequence `CT-{n}/{ano}`, relação exclusiva, rollups e a regra que exige parcelas medidas para sair de Elaboração):
+
+```bash
+pnpm db:seed              # idempotente; login demo@plexu.dev / plexu-demo-2026
+```
+
 Checagens (obrigatórias antes de PR; os testes de integração usam o Postgres acima):
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm test
+```
+
+E2E (Playwright; sobe o `next dev` sozinho e precisa do seed no banco de `DATABASE_URL`):
+
+```bash
+pnpm exec playwright install chromium   # uma vez
+pnpm e2e
 ```
 
 **`pnpm build` no Windows**: a saída `standalone` do Next cria symlinks, e o Windows recusa sem permissão (`EPERM: operation not permitted, symlink`). Ative o *Modo de desenvolvedor* (Configurações → Sistema → Para desenvolvedores) ou rode o build via Docker (`docker compose build app`). O CI (Linux) não tem essa restrição.

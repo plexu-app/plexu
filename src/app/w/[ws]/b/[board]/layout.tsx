@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AbasBoard } from "@/components/abas-board";
-import { exigirBoard, exigirMembro } from "@/server/acesso";
+import { exigirBoard, exigirMembro, podeConfigurar } from "@/server/acesso";
 
 export default async function LayoutBoard({
   children,
@@ -13,7 +13,11 @@ export default async function LayoutBoard({
   const ctx = await exigirMembro(ws);
   const b = await exigirBoard(ctx, board);
   const base = `/w/${ws}/b/${b.slug}`;
-  const abas = [{ href: base, rotulo: b.kind === "workflow" ? "Kanban" : "Registros" }];
+  const abas = [
+    ...(b.kind === "workflow" ? [{ href: base, rotulo: "Kanban" }] : []),
+    { href: `${base}/table`, rotulo: "Tabela" },
+    ...(podeConfigurar(ctx) ? [{ href: `${base}/settings`, rotulo: "Configurações" }] : []),
+  ];
   return (
     <div className="flex h-[calc(100vh-3rem)] flex-col">
       <div className="flex items-center gap-4 border-b px-4 py-2">
