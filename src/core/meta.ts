@@ -2,6 +2,7 @@
 import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import { boards, cardLinks, cards, fieldPhaseSettings, fields, phases, workspaces } from "../db/schema";
 import type { Registro } from "../lib/expr";
+import { ajusteEfetivo, type AjusteFase } from "../lib/fase-origem";
 import { CoreError, ehUuid, type Actor, type CardRow, type Tx } from "./types";
 
 export type TipoCampo = string;
@@ -40,11 +41,7 @@ export interface Fase {
   allowCreate: boolean;
 }
 
-export interface AjusteFase {
-  visible: boolean | null;
-  editable: boolean | null;
-  required: boolean | null;
-}
+export type { AjusteFase };
 
 export interface Quadro {
   id: string;
@@ -74,8 +71,10 @@ export const TIPOS_SOMENTE_LEITURA = new Set([...TIPOS_CALCULADOS, "sequence"]);
 
 export const configRelacao = (c: Campo): ConfigRelacao => (c.config.relation ?? {}) as ConfigRelacao;
 
+/** Ajuste efetivo do campo na fase: field_phase_settings por cima do padrão da fase de origem. */
 export function ajuste(q: Quadro, fieldId: string, phaseId: string | null): AjusteFase | undefined {
-  return phaseId ? q.ajustes.get(`${fieldId}:${phaseId}`) : undefined;
+  if (!phaseId) return undefined;
+  return ajusteEfetivo(q.campoPorId.get(fieldId)?.config, q.fases, phaseId, q.ajustes.get(`${fieldId}:${phaseId}`));
 }
 
 export function carregarQuadro(op: Op, boardId: string): Promise<Quadro> {

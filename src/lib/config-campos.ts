@@ -33,6 +33,8 @@ export interface ContextoConfig {
   relacoes: Map<string, { boardId: string; target: string }>;
   /** campos do próprio board (id e slug), para parent_field e lock */
   campos: { id: string; slug: string; type: string }[];
+  /** fases ativas do board, para origin_phase_id (ausente: origem não é aceita) */
+  fases?: Set<string>;
 }
 
 const texto = (v: unknown) => (typeof v === "string" ? v.trim() : "");
@@ -43,8 +45,19 @@ const inteiro = (v: unknown, padrao: number, min: number, max: number, nome: str
   return n;
 };
 
-/** Valida e normaliza config conforme o tipo. Lança ErroConfigCampo com mensagem clara. */
+/**
+ * Valida e normaliza config conforme o tipo, mais a fase de origem (origin_phase_id, qualquer tipo).
+ * Lança ErroConfigCampo com mensagem clara.
+ */
 export function normalizarConfig(tipo: string, bruto: unknown, ctx: ContextoConfig): Record<string, unknown> {
+  const config = normalizarPorTipo(tipo, bruto, ctx);
+  const origem = texto((bruto as { origin_phase_id?: unknown } | null)?.origin_phase_id);
+  if (!origem) return config;
+  if (!ctx.fases?.has(origem)) throw new ErroConfigCampo("fase de origem inválida");
+  return { ...config, origin_phase_id: origem };
+}
+
+function normalizarPorTipo(tipo: string, bruto: unknown, ctx: ContextoConfig): Record<string, unknown> {
   if (!TIPOS_VALIDOS.has(tipo)) throw new ErroConfigCampo(`tipo de campo inválido: ${tipo}`);
   const c = (bruto && typeof bruto === "object" ? bruto : {}) as Record<string, unknown>;
   switch (tipo) {

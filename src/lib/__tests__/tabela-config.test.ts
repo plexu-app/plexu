@@ -51,6 +51,7 @@ describe("config por tipo", () => {
       { id: "rel1", slug: "parcelas", type: "relation" },
       { id: "t1", slug: "objeto", type: "text" },
     ],
+    fases: new Set(["f1", "f2"]),
   };
   const erro = (tipo: string, config: unknown) => {
     try {
@@ -96,6 +97,12 @@ describe("config por tipo", () => {
     expect(normalizarConfig("rollup", { rollup: { via_field: "rel1", agg: "sum", expr: "valor", format: "currency", filter_expr: "card.paga" } }, ctx)).toEqual({
       rollup: { via_field: "rel1", agg: "sum", expr: "valor", filter_expr: "card.paga", format: "currency" },
     });
+  });
+
+  it("fase de origem vale para qualquer tipo e precisa ser fase do board", () => {
+    expect(normalizarConfig("text", { origin_phase_id: "f2" }, ctx)).toEqual({ origin_phase_id: "f2" });
+    expect(normalizarConfig("currency", { origin_phase_id: "" }, ctx)).toEqual({ currency: { code: "BRL" } });
+    expect(erro("text", { origin_phase_id: "outra" })).toMatch(/fase de origem/);
   });
 
   it("tipo inválido, texto calculado e tipos sem config", () => {
