@@ -12,8 +12,10 @@ jobs:
         ports: ["5433:5432"]
         options: >-
           --health-cmd "pg_isready -U plexu" --health-interval 5s --health-timeout 3s --health-retries 10
+    # Três bancos no mesmo Postgres: plexu (demo), plexu_test (vitest, criado pelo setup) e plexu_e2e (Playwright).
     env:
       DATABASE_URL: postgres://plexu:plexu@localhost:5433/plexu
+      E2E_DATABASE_URL: postgres://plexu:plexu@localhost:5433/plexu_e2e
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -22,11 +24,16 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint
-      - run: pnpm db:migrate
-      - run: pnpm test
+      - name: migrações no banco do demo (plexu)
+        run: pnpm db:migrate
+      - name: testes (vitest, banco plexu_test)
+        run: pnpm test
       - run: pnpm build
-      # E2E: caso de aceitação do MVP sobre o seed demo (servidor next dev iniciado pelo Playwright)
-      - run: pnpm db:seed
+      # E2E: caso de aceitação do MVP sobre o seed demo, no banco plexu_e2e (servidor next dev iniciado pelo Playwright)
+      - name: banco do e2e (plexu_e2e)
+        run: pnpm db:migrate && pnpm db:seed
+        env:
+          DATABASE_URL: ${{ env.E2E_DATABASE_URL }}
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm e2e
         env:

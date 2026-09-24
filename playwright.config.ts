@@ -1,6 +1,7 @@
 ﻿import { defineConfig, devices } from "@playwright/test";
 
-// E2E contra o app real (next dev) e o Postgres de DATABASE_URL, que precisa ter `pnpm db:seed` aplicado.
+// E2E contra o app real (next dev) e o banco plexu_e2e (E2E_DATABASE_URL sobrescreve), com `pnpm db:migrate` e `pnpm db:seed` aplicados nele.
+// Nunca aponta para o banco do demo (plexu).
 const PORTA = Number(process.env.E2E_PORT ?? 3200);
 
 export default defineConfig({
@@ -24,7 +25,7 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 240_000,
     env: {
-      DATABASE_URL: process.env.DATABASE_URL ?? "postgres://plexu:plexu@localhost:5433/plexu",
+      DATABASE_URL: process.env.E2E_DATABASE_URL ?? "postgres://plexu:plexu@localhost:5433/plexu_e2e",
       APP_SECRET: process.env.APP_SECRET ?? "segredo-e2e-com-mais-de-16-caracteres",
     },
   },
