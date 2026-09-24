@@ -4,3 +4,5 @@ node_modules
 pgdata
 *.md
 !README.md
+.env
+.env.*
