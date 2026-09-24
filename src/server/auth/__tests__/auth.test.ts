@@ -40,3 +40,15 @@ describe("senha", () => {
     expect(await conferirSenha("qualquer", undefined)).toBe(false);
   });
 });
+
+describe("APP_SECRET", () => {
+  it("recusa ausente, exemplo e curto; aceita 32+", async () => {
+    const { problemaNoSegredo, SEGREDO_EXEMPLO } = await import("../segredo");
+    expect(problemaNoSegredo(undefined)).toMatch(/não definido/);
+    expect(problemaNoSegredo("  ")).toMatch(/não definido/);
+    expect(problemaNoSegredo(SEGREDO_EXEMPLO)).toMatch(/exemplo/);
+    expect(problemaNoSegredo("change-me")).toMatch(/exemplo/);
+    expect(problemaNoSegredo("a".repeat(31))).toMatch(/curto/);
+    expect(problemaNoSegredo("f".repeat(64))).toBeNull();
+  });
+});

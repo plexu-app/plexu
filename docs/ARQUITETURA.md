@@ -64,3 +64,6 @@ src/core         escrita em cards (e comentários) — chamado pelas server acti
 - **Relações no card**: campo próprio com cardinalidade um (ou `is_parent`) vira seletor com busca; campo próprio múltiplo e relações `is_parent` de outros boards viram sub-tabela com criação inline. Criar filho + ligar é atômico (`src/server/cards.ts`, core com `{ tx }`).
 - **Configuração** (`src/server/config.ts`) emite `config.changed` na mesma transação.
 - Um teste falha se `src/app` ou `src/components` importarem `db`/drizzle.
+- **Tabela** (`/table`): TanStack Table v9 (`useTable` + `tableFeatures`) para ordenação; o filtro de texto é local, sobre os valores já formatados (sem acento/caixa, todas as palavras). Boards base abrem direto na tabela.
+- **Configurações** (`/settings`, owner/admin): fases (criar, renomear, reordenar, final, arquivar sem cards), campos (tipo e config estruturada por tipo, expressões, título, único, arquivar) com ajuste por fase, e regras (sem exclusão: desativar). `src/lib/config-campos.ts` valida a config por tipo; toda expressão é validada com `parse()` no servidor e, ao digitar, no navegador (mesmo motor), com os avisos do lint.
+- **Seed** (`pnpm db:seed`) e **e2e** (`pnpm e2e`, Playwright sobre `next dev`) cobrem o caso de aceitação do MVP; o CI roda os dois depois do build.
