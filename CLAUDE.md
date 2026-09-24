@@ -4,7 +4,7 @@ Plexu: gestão de trabalho open source e self-hosted que cresce de kanban a ERP 
 
 ## Stack
 
-TypeScript ponta a ponta · Next.js 15 (App Router) · Drizzle ORM + PostgreSQL 16 (dados, fila pg-boss e eventos) · Tailwind · vitest. Expressões em CEL via `@marcbachmann/cel-js` (versão fixada; ver `docs/EXPRESSOES.md`). pnpm 10, Node ≥ 20.
+TypeScript ponta a ponta · Next.js 15 (App Router) · Drizzle ORM + PostgreSQL 16 (dados, fila pg-boss e eventos) · Tailwind · vitest. Expressões em CEL via `@marcbachmann/cel-js` (versão fixada; ver `docs/EXPRESSOES.md`). UI: Tailwind, componentes no padrão shadcn/ui, dnd-kit, **TanStack Table v9** (versão fixada; API diferente da v8: `useTable` + `tableFeatures`, sem `useReactTable`/`getCoreRowModel`; guias em `node_modules/@tanstack/react-table/skills`), Playwright para e2e. pnpm 10, Node ≥ 20.
 
 ## Antes de codar
 
