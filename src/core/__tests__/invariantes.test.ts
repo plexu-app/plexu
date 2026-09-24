@@ -28,3 +28,14 @@ describe("invariante 1", () => {
     expect(violacoes, "use as operações de src/core/cards.ts").toEqual([]);
   });
 });
+
+describe("sem SQL em componentes e route handlers", () => {
+  it("src/app e src/components não importam db nem drizzle (usam src/server e src/core)", () => {
+    const acesso = /from\s+["'](@\/db(\/[^"']*)?|(\.\.\/)+db(\/[^"']*)?|drizzle-orm[^"']*)["']/;
+    const violacoes = ["app", "components"]
+      .flatMap((d) => arquivos(join(RAIZ, "src", d)))
+      .map((p) => relative(RAIZ, p))
+      .filter((p) => acesso.test(readFileSync(join(RAIZ, p), "utf8")));
+    expect(violacoes, "mova a consulta para src/server/consultas.ts").toEqual([]);
+  });
+});

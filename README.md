@@ -39,6 +39,8 @@ pnpm db:migrate
 pnpm dev
 ```
 
+Na primeira visita a `http://localhost:3000`, com o banco sem usuários, a tela **Primeiro acesso** cria o workspace e a conta owner. Defina `APP_SECRET` (16+ caracteres aleatórios) no `.env`: ele assina o cookie de sessão e é obrigatório em produção.
+
 Checagens (obrigatórias antes de PR; os testes de integração usam o Postgres acima):
 
 ```bash

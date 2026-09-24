@@ -47,3 +47,20 @@ Decisões:
 - **Exclusão lógica (decisão 17)** não remove `card_links`: marca `card_links.deleted_at` com o mesmo instante do card, e toda leitura de ligação filtra `deleted_at is null`. `restoreCard` reativa as ligações inativadas por aquela exclusão (se a outra ponta estiver excluída, a ligação passa a acompanhar a exclusão dela) e falha com erro claro se reativar violaria exclusividade, cardinalidade ou unicidade. Emite `card.restored`; não há regra `can_restore` no MVP.
 - **Relações em `props`.** `createCard`/`updateFields` aceitam o campo de relação com a lista de destinos; o core converte em ligações (diff) com as mesmas checagens de `linkCards`.
 - **Configuração dos calculados.** `rollup: { via_field, agg: count|sum|avg|min|max, expr?, filter_expr? }`: `via_field` é o campo de relação (deste board: agrega os destinos; do outro board: agrega as origens). `expr` é um slug do card relacionado ou CEL com `card` = item; `filter_expr` idem, com `pai` = card que agrega. `dynamic_text: { template }` com trechos `{slug}` ou `{expressão CEL}`; erro vira `#ERRO` no texto em vez de bloquear a escrita.
+
+## UI (v0.1)
+
+```
+src/app          páginas (server components) e server actions — sem SQL
+src/components   componentes client (kanban, card, ui/* no padrão shadcn) — sem SQL
+src/server       leituras (consultas.ts), configuração (config.ts), sessão/acesso — única camada da UI que fala com o banco
+src/core         escrita em cards (e comentários) — chamado pelas server actions
+```
+
+- **Toda server action** começa com `exigirMembro(ws)` (sessão + pertencimento) e revalida que board e card são daquele workspace. Server actions são endpoints públicos: o layout não protege.
+- **Sessão**: cookie `plexu_sessao` httpOnly/SameSite=Lax com `{u, v, e}` assinado em HMAC-SHA256 com `APP_SECRET`. `v` = `users.auth.sv`; incrementar invalida sessões. Senha em `users.auth.senha` (bcrypt, custo 12, via `bcryptjs`, sem binário nativo).
+- **Primeiro acesso** (`/setup`) só existe com o banco sem usuários; cria owner + workspace sob lock consultivo.
+- **Estado dos campos no card** vem de `core.estadoDosCampos`: `field_phase_settings` vence; sem ajuste, `visible_expr`/`required_expr`. Regras `can_edit` são avaliadas ao salvar e voltam como mensagem.
+- **Relações no card**: campo próprio com cardinalidade um (ou `is_parent`) vira seletor com busca; campo próprio múltiplo e relações `is_parent` de outros boards viram sub-tabela com criação inline. Criar filho + ligar é atômico (`src/server/cards.ts`, core com `{ tx }`).
+- **Configuração** (`src/server/config.ts`) emite `config.changed` na mesma transação.
+- Um teste falha se `src/app` ou `src/components` importarem `db`/drizzle.

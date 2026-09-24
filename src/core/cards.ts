@@ -36,7 +36,8 @@ import { CoreError, validarAtor, type Actor, type CardRow, type OpcoesOp, type T
 // Infra
 // ---------------------------------------------------------------------------
 
-async function executar<T>(actor: Actor, opts: OpcoesOp | undefined, fn: (op: Op) => Promise<T>): Promise<T> {
+/** @internal Executa uma operação do core em transação (ou savepoint de opts.tx). */
+export async function executar<T>(actor: Actor, opts: OpcoesOp | undefined, fn: (op: Op) => Promise<T>): Promise<T> {
   validarAtor(actor);
   const run = (tx: Tx) => fn({ tx, actor, quadros: new Map() });
   try {

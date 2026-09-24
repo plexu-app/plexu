@@ -1,9 +1,16 @@
-export default function Home() {
-  return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-4 p-10">
-      <h1 className="text-4xl font-bold tracking-tight">plex<span className="text-[var(--plexu-accent)]">u</span></h1>
-      <p className="text-lg">Board que nasce como kanban e cresce até ERP, sem trocar de ferramenta.</p>
-      <p className="text-sm opacity-70">MVP em construção — veja <code>docs/PRODUTO.md</code>.</p>
-    </main>
-  );
+import { redirect } from "next/navigation";
+import { usuarioAtual } from "@/server/auth/sessao";
+import { haUsuarios, workspacesDoUsuario } from "@/server/consultas";
+
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  if (!(await haUsuarios())) redirect("/setup");
+  const u = await usuarioAtual();
+  if (!u) redirect("/login");
+  const [ws] = await workspacesDoUsuario(u.id);
+  if (!ws) {
+    return <main className="p-10 text-sm">Sua conta não participa de nenhum workspace. Peça um convite a um administrador.</main>;
+  }
+  redirect(`/w/${ws.slug}`);
 }

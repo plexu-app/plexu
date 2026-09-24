@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
+import { Toaster } from "sonner";
 import "./globals.css";
 
-export const metadata: Metadata = { title: "Plexu", description: "Work management that grows into an ERP." };
+export const metadata: Metadata = { title: "Plexu", description: "Board que nasce kanban e cresce até ERP." };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
-      <body className="min-h-screen bg-white text-[var(--plexu-ink)] antialiased">{children}</body>
+      <body className="min-h-screen antialiased">
+        {children}
+        <Toaster richColors position="bottom-right" closeButton />
+      </body>
     </html>
   );
 }
