@@ -29,7 +29,7 @@ import {
   type Quadro,
   type VistaCard,
 } from "./meta";
-import { canBack, canCreate, canDelete, canEdit, canEnter, canLeave, compilar, type ResultadoRegra } from "./rules";
+import { avaliarMovimento, canCreate, canDelete, canEdit, compilar, type ResultadoRegra } from "./rules";
 import { CoreError, validarAtor, type Actor, type CardRow, type OpcoesOp, type Tx } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -323,12 +323,7 @@ export function moveCard(input: MoveCardInput, opts?: OpcoesOp): Promise<CardRow
 
     const origem = card.phaseId ? q.fasePorId.get(card.phaseId) ?? null : null;
     const alvo = { quadro: q, card: vistaDe(card), ligacoes: await lerLigacoes(op, [card.id]) };
-    if (origem && destino.position < origem.position) {
-      exigir(await canBack(op, { ...alvo, origem: origem.id, destino: destino.id }));
-    } else if (origem) {
-      exigir(await canLeave(op, { ...alvo, origem: origem.id, destino: destino.id }));
-    }
-    exigir(await canEnter(op, { ...alvo, origem: origem?.id ?? null, destino: destino.id }));
+    exigir(await avaliarMovimento(op, alvo, origem, destino));
 
     const status = destino.isTerminal ? "done" : card.status === "done" ? "open" : card.status;
     await op.tx

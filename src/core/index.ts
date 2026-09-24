@@ -6,7 +6,7 @@ export type { AddCommentInput } from "./comments";
 export { emitirEvento, emitirEventoConfig } from "./events";
 export type { EntidadeConfig, EventoCard, EventoConfig, TipoEvento } from "./events";
 export { garantirIndiceExclusivo } from "./fields";
-export { estadoDosCampos } from "./vistas";
+export { estadoDosCampos, movimentosDoCard, type MovimentoPossivel } from "./vistas";
 export type { EstadoCampo } from "./vistas";
 export { CoreError } from "./types";
 export type { Actor, ActorType, CardRow, CodigoCore, OpcoesOp, Tx } from "./types";

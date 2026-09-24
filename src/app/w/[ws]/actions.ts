@@ -3,7 +3,7 @@
 // escrita em cards só pelo src/core; configuração só por src/server/config.
 import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
-import { addComment, CoreError, createCard, linkCards, moveCard, unlinkCards, updateFields } from "@/core";
+import { addComment, CoreError, createCard, deleteCard, linkCards, moveCard, unlinkCards, updateFields } from "@/core";
 import { exigirBoard, exigirCard, exigirConfigurador, exigirMembro } from "@/server/acesso";
 import { criarFilho } from "@/server/cards";
 import { criarBoard, ErroConfig } from "@/server/config";
@@ -68,6 +68,16 @@ export async function moverCardAction(ws: string, board: string, cardId: string,
   const b = await exigirBoard(ctx, board);
   await exigirCard(b, cardId);
   const r = await tentar(() => moveCard({ cardId, toPhaseId: phaseId, actor: ctx.actor }));
+  revalidatePath(caminhoBoard(ws, board), "layout");
+  return r;
+}
+
+/** Exclusão lógica (decisão 17): regras can_delete valem; as ligações ficam inativas. */
+export async function excluirCardAction(ws: string, board: string, cardId: string): Promise<Resultado> {
+  const ctx = await exigirMembro(ws);
+  const b = await exigirBoard(ctx, board);
+  await exigirCard(b, cardId);
+  const r = await tentar(() => deleteCard({ cardId, actor: ctx.actor }));
   revalidatePath(caminhoBoard(ws, board), "layout");
   return r;
 }

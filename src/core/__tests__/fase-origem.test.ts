@@ -3,7 +3,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { createCard, moveCard, updateFields } from "../cards";
 import { CoreError, type Actor } from "../types";
-import { estadoDosCampos } from "../vistas";
+import { estadoDosCampos, movimentosDoCard } from "../vistas";
 import { ajustarFase, criarBoard, criarCampo, criarWorkspace } from "./fixtures";
 
 let actor: Actor;
@@ -80,5 +80,19 @@ describe("fase de origem", () => {
     expect((await erro(updateFields({ cardId: c.id, props: { valor: 1 }, actor }))).codigo).toBe("somente_leitura");
     const ok = await updateFields({ cardId: c.id, props: { nota: "entregue" }, actor });
     expect(ok.props[B.campos.nota]).toBe("entregue");
+  });
+});
+
+describe("movimentosDoCard", () => {
+  it("lista as outras fases com permitido/motivo, sem mover", async () => {
+    const c = await createCard({ boardId: B.board, props: { titulo: "Armários" }, actor });
+    await moveCard({ cardId: c.id, toPhaseId: B.fases.cotacao, actor });
+    const ms = await movimentosDoCard({ cardId: c.id, actor });
+    expect(ms.map((m) => m.faseId)).toEqual([B.fases.abertura, B.fases.entrega]);
+    expect(ms[0]).toEqual({ faseId: B.fases.abertura, permitido: true });
+    expect(ms[1].permitido).toBe(false);
+    expect(ms[1].motivo).toMatch(/Valor/);
+    const e = await estadoDosCampos({ cardId: c.id, actor });
+    expect(e[B.campos.valor].editavel).toBe(true); // nada mudou
   });
 });
