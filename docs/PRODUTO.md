@@ -201,6 +201,6 @@ Fonte: levantamento de telas de configuração + metadados via API. Observação
 - Eventos imutáveis + tela de histórico do card.
 - API REST v1 (OpenAPI) com service account. Docker compose. PT-BR.
 
-**Fica para v1**: `can_back` com `on_fail.children` = `cancel`/`delete` (MVP só `block`/`keep`), groups/roles/permissions finas, approvals, tags, tasks, forms públicos, portals, webhooks, connections/variables, calendars/SLA, snapshots/sandbox, templates, extensions, calendário/timeline/gantt/dashboard, automação em modo Fluxo, e-mail.
+**Fica para v1**: `can_back` com `on_fail.children` = `cancel`/`delete` (MVP só `block`/`keep`), `restoreCard` exigir a permissão `card.delete` (hoje o core restaura sem checar permissão; a UI ainda não oferece restauração), e2e sobre a imagem Docker de produção (hoje sobre `next dev`), groups/roles/permissions finas, approvals, tags, tasks, forms públicos, portals, webhooks, connections/variables, calendars/SLA, snapshots/sandbox, templates, extensions, calendário/timeline/gantt/dashboard, automação em modo Fluxo, e-mail.
 
 **Stack (decisão)**: TypeScript ponta a ponta. Next.js (App Router) + Drizzle + Postgres; cel-js para expressões; fila em Postgres (pg-boss) — sem Redis no MVP. UI: Tailwind + shadcn + dnd-kit + TanStack Table.
