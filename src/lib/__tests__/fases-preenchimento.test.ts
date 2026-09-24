@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ajusteEfetivo, combinarAjuste, fasesDoCampo, padraoDasFases, primeiraFase } from "../fases-preenchimento";
+import { ajusteEfetivo, combinarAjuste, fasesDoCampo, obrigatorioOculto, padraoDasFases, primeiraFase } from "../fases-preenchimento";
 
 const fases = [
   { id: "a", position: 0 },
@@ -47,5 +47,21 @@ describe("fases de preenchimento", () => {
     });
     const aj = { visible: false, editable: null, required: null };
     expect(ajusteEfetivo({}, fases, "a", aj)).toBe(aj);
+  });
+});
+
+describe("obrigatorioOculto (aviso em Settings → Campos)", () => {
+  const nomes = fases.map((f) => ({ id: f.id, name: f.id.toUpperCase() }));
+  const aj = (phaseId: string, required: boolean) => ({ fieldId: "x", phaseId, visible: null, editable: null, required });
+  it("avisa quando a exceção exige o campo numa fase em que ele está oculto", () => {
+    const campo = { id: "x", config: { fill_phases: ["c"] }, requiredExpr: null, visibleExpr: null };
+    expect(obrigatorioOculto(nomes, [aj("a", true), aj("c", true)], campo)).toEqual(["A"]);
+  });
+  it("não avisa o caso normal: required \"true\" com fill_phases (antes da fase fica oculto e não exigido)", () => {
+    const campo = { id: "x", config: { fill_phases: ["c"] }, requiredExpr: "true", visibleExpr: null };
+    expect(obrigatorioOculto(nomes, [], campo)).toEqual([]);
+  });
+  it("visible \"false\" com required: oculto em todas as fases", () => {
+    expect(obrigatorioOculto(nomes, [], { id: "x", config: {}, requiredExpr: "true", visibleExpr: "false" })).toEqual(["todas as fases"]);
   });
 });

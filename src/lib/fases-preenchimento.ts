@@ -69,3 +69,23 @@ export function ajusteEfetivo(
 ): AjusteFase | undefined {
   return combinarAjuste(explicito, padraoDasFases(config, fases, faseId));
 }
+
+/**
+ * Nomes das fases em que o campo é obrigatório mas fica oculto — configuração contraditória
+ * (ex.: exceção required=true numa fase antes de fill_phases, ou visible "false" com required).
+ * Não bloqueia nada: o core nunca exige campo oculto. Serve ao aviso em Settings → Campos.
+ */
+export function obrigatorioOculto(
+  fases: readonly { id: string; name: string }[],
+  ajustes: readonly (AjusteFase & { fieldId: string; phaseId: string })[],
+  campo: { id: string; config: Record<string, unknown>; requiredExpr: string | null; visibleExpr: string | null },
+): string[] {
+  if (campo.visibleExpr?.trim() === "false" && campo.requiredExpr?.trim() && campo.requiredExpr.trim() !== "false") return ["todas as fases"];
+  const ordenadas = fases.map((f, i) => ({ id: f.id, position: i }));
+  return fases
+    .filter((f) => {
+      const aj = ajusteEfetivo(campo.config, ordenadas, f.id, ajustes.find((a) => a.fieldId === campo.id && a.phaseId === f.id));
+      return aj?.required === true && aj.visible === false;
+    })
+    .map((f) => f.name);
+}

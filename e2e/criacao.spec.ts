@@ -68,3 +68,31 @@ test("sub-tabela: sem cobertura dos obrigatórios, Adicionar abre o formulário 
   await expect(aditivos.locator("[data-linha]")).toHaveCount(1);
   await expect(aditivos.locator("[data-linha]")).toContainText("1.200,00");
 });
+
+test("modal de criação: relação N:1 com busca; obrigatório faltando é destacado e recebe foco", async ({ page }) => {
+  await entrar(page);
+  await page.goto("/w/demo/b/contratos");
+  await page.getByRole("button", { name: "Novo card", exact: true }).click();
+  const modal = page.getByRole("dialog", { name: "Novo card" });
+
+  // Relação N:1 (um card) aparece no formulário; 1:N (Parcelas, Aditivos) fica para depois de criar
+  const fornecedor = modal.locator('[data-campo-novo="Fornecedor"]');
+  await expect(fornecedor).toBeVisible();
+  await expect(modal.locator('[data-campo-novo="Parcelas"]')).toHaveCount(0);
+  await fornecedor.getByLabel("Fornecedor").fill("Beta");
+  await fornecedor.getByRole("option", { name: /Construtora Beta/ }).getByRole("button").click();
+  await expect(fornecedor.locator('[data-escolhido="Construtora Beta"]')).toBeVisible();
+  await expect(fornecedor.getByLabel("Fornecedor")).toHaveCount(0); // um só card
+
+  // Obrigatório vazio: mensagem, destaque e foco no primeiro campo faltante
+  await modal.getByRole("button", { name: "Criar card" }).click();
+  const objeto = modal.locator('[data-campo-novo="Objeto"]');
+  await expect(objeto).toHaveAttribute("data-destaque", "true");
+  await expect(objeto.getByRole("textbox")).toBeFocused();
+  await expect(modal.getByRole("alert").filter({ hasText: "Preencha os campos obrigatórios." })).toBeVisible();
+
+  await objeto.getByRole("textbox").fill("Contrato com fornecedor (e2e)");
+  await modal.getByRole("button", { name: "Criar card" }).click();
+  await page.waitForURL(/\/c\/[0-9a-f-]{36}$/);
+  await expect(page.getByTestId("coluna-atual").locator('[data-campo="Fornecedor"]').getByRole("link", { name: "Construtora Beta" })).toBeVisible();
+});

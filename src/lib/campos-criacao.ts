@@ -74,3 +74,23 @@ export function valoresDoFormData(form: FormData): Record<string, string[]> {
   }
   return v;
 }
+
+/**
+ * Campos faltantes (ids) × campos do formulário: o primeiro faltante que está no formulário (para
+ * rolar até ele e destacá-lo) e as mensagens dos que o formulário não mostra — obrigatório que o
+ * usuário não consegue preencher é erro de configuração.
+ */
+export function diagnosticarFaltantes(
+  faltantes: string[],
+  noFormulario: string[],
+  nomes: Record<string, string>,
+): { primeiro: string | null; mensagensForaDoFormulario: string[] } {
+  const falta = new Set(faltantes);
+  const visiveis = new Set(noFormulario);
+  return {
+    primeiro: noFormulario.find((id) => falta.has(id)) ?? null,
+    mensagensForaDoFormulario: faltantes
+      .filter((id) => !visiveis.has(id))
+      .map((id) => `Campo ${nomes[id] ?? id} é obrigatório mas não está visível — corrija a configuração.`),
+  };
+}

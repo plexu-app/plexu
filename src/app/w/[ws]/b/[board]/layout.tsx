@@ -20,6 +20,7 @@ export default async function LayoutBoard({
     id: f.id,
     nome: f.name,
     campos: camposDaFase(b, ajustes, f.id),
+    nomes: Object.fromEntries(b.campos.map((c) => [c.id, c.name])),
   }));
   return (
     <BoardShell

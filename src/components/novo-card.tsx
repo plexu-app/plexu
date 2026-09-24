@@ -3,19 +3,22 @@
 // avaliados ao vivo conforme o usuário preenche (mesmo motor do servidor). O servidor revalida e o
 // core recusa obrigatório vazio. Nunca cria card vazio.
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { criarCardComCamposAction, type ResultadoCriacao } from "@/app/w/[ws]/actions";
 import { CampoInput } from "@/components/card/campo-input";
+import { RelacaoNaCriacao } from "@/components/card/relacao-criacao";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/input";
-import { estadoCriacao, registroDoForm, valoresDoFormData, type CampoCriacaoDef } from "@/lib/campos-criacao";
+import { diagnosticarFaltantes, estadoCriacao, registroDoForm, valoresDoFormData, type CampoCriacaoDef } from "@/lib/campos-criacao";
 import { cn } from "@/lib/utils";
 
 export interface FaseNovoCard {
   id: string | null;
   nome: string;
   campos: CampoCriacaoDef[];
+  /** Nome de todos os campos do board (id → nome), para explicar obrigatórios fora do formulário. */
+  nomes?: Record<string, string>;
 }
 
 const preenchido = (valores: Record<string, string[]>, c: { id: string; type: string }) => {
@@ -53,6 +56,8 @@ export function NovoCard({
   const [valores, setValores] = useState<Record<string, string[]>>({});
   const [erros, setErros] = useState<Record<string, string>>({});
   const [erroGeral, setErroGeral] = useState<string | null>(null);
+  const [destaque, setDestaque] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const [pendente, iniciar] = useTransition();
 
   const campos = useMemo(() => fase?.campos ?? [], [fase]);
@@ -63,6 +68,22 @@ export function NovoCard({
     setValores({});
     setErros({});
     setErroGeral(null);
+    setDestaque(null);
+  }
+
+  /** Mensagem + rolar até o primeiro campo faltante e destacá-lo; explica os que o formulário não mostra. */
+  function apontar(faltantes: string[], motivo: string, atuais: Record<string, string[]>) {
+    const est = estadoCriacao(campos, registroDoForm(campos, atuais), fase?.id ? fase.nome : null, hoje);
+    const noForm = campos.filter((c) => est[c.id]?.visivel).map((c) => c.id);
+    const d = diagnosticarFaltantes(faltantes, noForm, { ...Object.fromEntries(campos.map((c) => [c.id, c.name])), ...fase?.nomes });
+    setErroGeral([motivo, ...d.mensagensForaDoFormulario].join(" "));
+    setDestaque(d.primeiro);
+    if (!d.primeiro) return;
+    const alvo = d.primeiro;
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-campo-id="${alvo}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+      (document.getElementById(`novo-${alvo}`) as HTMLElement | null)?.focus({ preventScroll: true });
+    });
   }
 
   function validar(atuais: Record<string, string[]>): boolean {
@@ -72,7 +93,7 @@ export function NovoCard({
     for (const c of vis) if (est[c.id]?.obrigatorio && !preenchido(atuais, c)) e[c.id] = "Obrigatório nesta fase";
     setErros(e);
     if (Object.keys(e).length) {
-      setErroGeral("Preencha os campos obrigatórios.");
+      apontar(Object.keys(e), "Preencha os campos obrigatórios.", atuais);
       return false;
     }
     if (!vis.some((c) => preenchido(atuais, c))) {
@@ -80,6 +101,7 @@ export function NovoCard({
       return false;
     }
     setErroGeral(null);
+    setDestaque(null);
     return true;
   }
 
@@ -94,6 +116,7 @@ export function NovoCard({
       <DialogContent className="max-w-2xl" aria-describedby="novo-card-desc">
         {fase && (
           <form
+            ref={formRef}
             noValidate
             className="flex min-h-0 flex-col"
             onChange={(e) => setValores(valoresDoFormData(new FormData(e.currentTarget)))}
@@ -111,8 +134,8 @@ export function NovoCard({
                   if (aoCriar) aoCriar(r.id);
                   else router.push(`/w/${ws}/b/${board}/c/${r.id}`);
                 } else {
-                  setErroGeral(r.motivo);
                   setErros(Object.fromEntries((r.campos ?? []).map((id) => [id, "Verifique este campo"])));
+                  apontar(r.campos ?? [], r.motivo, atuais);
                 }
               });
             }}
@@ -132,7 +155,17 @@ export function NovoCard({
                 const id = `novo-${c.id}`;
                 const obrigatorio = !!estados[c.id]?.obrigatorio;
                 return (
-                  <div key={c.id} className={cn("flex flex-col gap-1.5", c.type === "long_text" && "col-span-2")} data-campo-novo={c.name}>
+                  <div
+                    key={c.id}
+                    className={cn(
+                      "flex flex-col gap-1.5 rounded-md",
+                      (c.type === "long_text" || c.type === "relation") && "col-span-2",
+                      destaque === c.id && "ring-2 ring-destructive ring-offset-4",
+                    )}
+                    data-campo-novo={c.name}
+                    data-campo-id={c.id}
+                    data-destaque={destaque === c.id || undefined}
+                  >
                     <Label htmlFor={id}>
                       {c.name}
                       {obrigatorio && (
@@ -141,7 +174,18 @@ export function NovoCard({
                         </span>
                       )}
                     </Label>
-                    <CampoInput campo={c} valor={null} pessoas={pessoas} id={id} obrigatorio={obrigatorio} />
+                    {c.type === "relation" ? (
+                      <RelacaoNaCriacao
+                        ws={ws}
+                        board={board}
+                        campo={c}
+                        id={id}
+                        obrigatorio={obrigatorio}
+                        aoMudar={() => formRef.current && setValores(valoresDoFormData(new FormData(formRef.current)))}
+                      />
+                    ) : (
+                      <CampoInput campo={c} valor={null} pessoas={pessoas} id={id} obrigatorio={obrigatorio} />
+                    )}
                     {erros[c.id] ? (
                       <p className="text-xs text-destructive" role="alert">
                         {erros[c.id]}

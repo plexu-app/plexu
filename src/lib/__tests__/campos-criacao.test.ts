@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estadoCriacao, registroDoForm, valoresDoFormData, type CampoCriacaoDef } from "../campos-criacao";
+import { diagnosticarFaltantes, estadoCriacao, registroDoForm, valoresDoFormData, type CampoCriacaoDef } from "../campos-criacao";
 
 const campo = (p: Partial<CampoCriacaoDef> & { id: string; type: string }): CampoCriacaoDef => ({
   name: p.id,
@@ -58,5 +58,20 @@ describe("valoresDoFormData", () => {
     f.append("f:m", "y");
     f.append("campos", "a");
     expect(valoresDoFormData(f)).toEqual({ a: ["1"], m: ["x", "y"] });
+  });
+});
+
+describe("diagnosticarFaltantes", () => {
+  it("aponta o primeiro faltante do formulário e explica os que ele não mostra", () => {
+    const r = diagnosticarFaltantes(["z", "b", "x"], ["a", "b", "c", "z"], { x: "Anexo do contrato", b: "B", z: "Z" });
+    expect(r.primeiro).toBe("b");
+    expect(r.mensagensForaDoFormulario).toEqual(["Campo Anexo do contrato é obrigatório mas não está visível — corrija a configuração."]);
+    expect(diagnosticarFaltantes([], ["a"], {})).toEqual({ primeiro: null, mensagensForaDoFormulario: [] });
+  });
+
+  it("relação N:1 entra no registro como lista de ids", () => {
+    const rel = campo({ id: "forn", type: "relation", config: { relation: { cardinality: "one" } } });
+    expect(registroDoForm([rel], { forn: ["id-1"] })).toEqual({ forn: ["id-1"] });
+    expect(registroDoForm([rel], { forn: [] })).toEqual({});
   });
 });

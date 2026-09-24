@@ -20,24 +20,21 @@ function ajusteDe(board: Pick<BoardCompleto, "fases">, ajustes: AjusteFase[], c:
   return ajusteEfetivo(c.config, board.fases, faseId, ajustes.find((a) => a.fieldId === c.id && a.phaseId === faseId));
 }
 
-export const EDITAVEIS_NA_CRIACAO = new Set([
-  "text",
-  "long_text",
-  "number",
-  "currency",
-  "date",
-  "datetime",
-  "boolean",
-  "select",
-  "multi_select",
-  "person",
-  "cpf",
-  "cnpj",
-]);
+/**
+ * Campos que o formulário de criação mostra: todos os que o formulário da fase renderiza (tipos não
+ * calculados) e relações N:1 (um card, ou "o card escolhido é o pai") como seletor com busca.
+ * Relações 1:N (sub-tabela) ficam para depois de criar o card.
+ */
+export function editavelNaCriacao(c: { type: string; config: Record<string, unknown> }): boolean {
+  if (TIPOS_CALCULADOS_UI.has(c.type)) return false;
+  if (c.type !== "relation") return true;
+  const r = (c.config.relation ?? {}) as { cardinality?: string; is_parent?: boolean };
+  return r.cardinality === "one" || r.is_parent === true;
+}
 
 export function camposDaFase(board: Pick<BoardCompleto, "campos" | "fases">, ajustes: AjusteFase[], faseId: string | null): CampoCriacaoDef[] {
   return board.campos
-    .filter((c) => EDITAVEIS_NA_CRIACAO.has(c.type))
+    .filter(editavelNaCriacao)
     .flatMap((c) => {
       const aj = ajusteDe(board, ajustes, c, faseId);
       if (aj?.editable === false) return [];

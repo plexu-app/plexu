@@ -17,6 +17,9 @@ export function valorDoForm(tipo: string, valores: string[]): unknown {
       return valores.filter((x) => x !== "");
     case "person":
       return v === "" ? null : v;
+    case "relation":
+      // ids dos cards escolhidos (seletor de relação N:1 no formulário de criação)
+      return valores.map((x) => x.trim()).filter((x) => x !== "");
     case "number":
     case "currency": {
       if (v === "") return null;

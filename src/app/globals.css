@@ -19,6 +19,7 @@
   /* Texto pequeno (12px) sobre fundos tingidos: contraste AA (≥ 4,5:1) */
   --primary-strong: #2e46d1;
   --destructive-strong: #b42318;
+  --warning-strong: #b54708;
   --secondary: #eef1f7;
   --secondary-foreground: #1f2a44;
   --destructive: #d92d20;
@@ -37,6 +38,7 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-primary-strong: var(--primary-strong);
   --color-destructive-strong: var(--destructive-strong);
+  --color-warning-strong: var(--warning-strong);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-destructive: var(--destructive);
