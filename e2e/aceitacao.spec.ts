@@ -47,8 +47,7 @@ test("contrato com 2 parcelas: mover sem medir é bloqueado; depois de medir, mo
   await expect(page.getByTestId("titulo-card")).toHaveText(/^CT-\d{4}\/\d{4}$/);
   await expect(page.getByTestId("fase-card")).toHaveText("Elaboração");
 
-  // Duas parcelas pela aba Relacionados (sub-tabela)
-  await painel.getByRole("tab", { name: /Relacionados/ }).click();
+  // Duas parcelas pela sub-tabela, no formulário da fase
   const parcelas = painel.locator('[data-subtabela="Parcelas"]');
   for (const [i, valor] of ["1000", "500,50"].entries()) {
     await parcelas.getByLabel("Valor", { exact: true }).fill(valor);
@@ -70,7 +69,6 @@ test("contrato com 2 parcelas: mover sem medir é bloqueado; depois de medir, mo
   // Medir as duas parcelas a partir do painel
   await noKanban("Elaboração").click();
   await expect(painel).toBeVisible();
-  await painel.getByRole("tab", { name: /Relacionados/ }).click();
   const medidas = parcelas.locator("[data-linha]").getByLabel(/^Medida de /);
   await expect(medidas).toHaveCount(2);
   for (const i of [0, 1]) {

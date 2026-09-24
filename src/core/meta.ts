@@ -2,7 +2,7 @@
 import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import { boards, cardLinks, cards, fieldPhaseSettings, fields, phases, workspaces } from "../db/schema";
 import type { Registro } from "../lib/expr";
-import { ajusteEfetivo, type AjusteFase } from "../lib/fase-origem";
+import { ajusteEfetivo, type AjusteFase } from "../lib/fases-preenchimento";
 import { CoreError, ehUuid, type Actor, type CardRow, type Tx } from "./types";
 
 export type TipoCampo = string;

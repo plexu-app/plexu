@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { Archive, Calculator, GripVertical, Pencil, Plus } from "lucide-react";
-import { ajustarFaseAction, arquivarCampoAction, definirOrigemCampoAction, salvarCampoAction } from "@/app/w/[ws]/b/[board]/settings/actions";
+import { ajustarFaseAction, arquivarCampoAction, definirFasesCampoAction, salvarCampoAction } from "@/app/w/[ws]/b/[board]/settings/actions";
 import { CampoInput } from "@/components/card/campo-input";
 import { ConstrutorCondicoes, type CampoCondicao } from "@/components/condicoes/construtor";
 import { EditorCel } from "@/components/config/editor-cel";
@@ -14,7 +14,7 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, Dia
 import { Input, Label, NativeSelect, Textarea } from "@/components/ui/input";
 import { Badge, Card, CardContent, CardHeader, CardTitle, Table, TBody, Td, Th, THead, Tr } from "@/components/ui/misc";
 import { TIPOS_CAMPO } from "@/lib/config-campos";
-import { origemDoCampo } from "@/lib/fase-origem";
+import { fasesDoCampo } from "@/lib/fases-preenchimento";
 import { exprDoValorFixo, lerValorInicial, TIPOS_DATA, TIPOS_NUMERO, type ModoInicial } from "@/lib/valor-inicial";
 import { cn } from "@/lib/utils";
 
@@ -49,33 +49,37 @@ const rotuloTipo = new Map(TIPOS_CAMPO.map((t) => [t.tipo, t.rotulo]));
 const calculado = new Set(TIPOS_CAMPO.filter((t) => t.calculado).map((t) => t.tipo));
 const SEM_FASE = "__sem_fase";
 
-/** Origem para agrupar: origem que não é fase ativa conta como "todas as fases". */
-function origemNaLista(ctx: ContextoCampos, c: CampoConfig): string | null {
-  const o = origemDoCampo(c.config);
-  return o && ctx.fases.some((f) => f.id === o) ? o : null;
+/** Fases de preenchimento válidas do campo, na ordem das fases do board. */
+function fasesNaLista(ctx: ContextoCampos, config: Record<string, unknown>): string[] {
+  const ids = new Set(fasesDoCampo(config));
+  return ctx.fases.filter((f) => ids.has(f.id)).map((f) => f.id);
 }
 
 export function ConfigCampos(ctx: ContextoCampos) {
   const [editando, setEditando] = useState<string | null>(null);
   const [arrastando, setArrastando] = useState<string | null>(null);
-  // Origem otimista enquanto a server action responde.
-  const [origens, setOrigens] = useState<Record<string, string | null>>({});
+  // Fases otimistas enquanto a server action responde.
+  const [otimistas, setOtimistas] = useState<Record<string, string[]>>({});
   const { pendente, executar } = useAcaoConfig();
   const sensores = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor));
   const campoEditado = editando && editando !== "novo" ? ctx.campos.find((c) => c.id === editando) ?? null : null;
-  const origem = (c: CampoConfig) => (c.id in origens ? origens[c.id] : origemNaLista(ctx, c));
+  const fasesDe = (c: CampoConfig) => otimistas[c.id] ?? fasesNaLista(ctx, c.config);
+  const primeira = (c: CampoConfig) => fasesDe(c)[0] ?? null;
   const comFases = ctx.fases.length > 0;
+  const posicao = new Map(ctx.fases.map((f, i) => [f.id, i]));
+  const nomes = (ids: string[]) => ids.map((id) => ctx.fases.find((f) => f.id === id)?.name ?? "").join(", ");
 
-  function mudarOrigem(c: CampoConfig, faseId: string | null) {
-    if (origem(c) === faseId) return;
-    setOrigens((o) => ({ ...o, [c.id]: faseId }));
-    const fase = ctx.fases.find((f) => f.id === faseId);
+  function mudarFases(c: CampoConfig, novas: string[]) {
+    const ordenadas = ctx.fases.filter((f) => novas.includes(f.id)).map((f) => f.id);
+    const atuais = fasesDe(c);
+    if (ordenadas.length === atuais.length && ordenadas.every((x, i) => x === atuais[i])) return;
+    setOtimistas((o) => ({ ...o, [c.id]: ordenadas }));
     executar(
-      () => definirOrigemCampoAction(ctx.ws, ctx.board, c.id, faseId),
-      fase ? `${c.name}: preenchido em ${fase.name}` : `${c.name}: em todas as fases`,
+      () => definirFasesCampoAction(ctx.ws, ctx.board, c.id, ordenadas),
+      ordenadas.length ? `${c.name}: preenchido em ${nomes(ordenadas)}` : `${c.name}: em todas as fases`,
       undefined,
       () =>
-        setOrigens((o) => {
+        setOtimistas((o) => {
           const resto = { ...o };
           delete resto[c.id];
           return resto;
@@ -83,18 +87,21 @@ export function ConfigCampos(ctx: ContextoCampos) {
     );
   }
 
+  /** Arrastar para o grupo X: X vira a primeira fase (as listadas depois dela continuam). */
   function aoSoltar(e: DragEndEvent) {
     setArrastando(null);
     const c = ctx.campos.find((x) => x.id === String(e.active.id));
     if (!c || !e.over) return;
     const alvo = String(e.over.id);
-    mudarOrigem(c, alvo === SEM_FASE ? null : alvo);
+    if (alvo === SEM_FASE) return mudarFases(c, []);
+    const p = posicao.get(alvo) ?? 0;
+    mudarFases(c, [alvo, ...fasesDe(c).filter((id) => (posicao.get(id) ?? 0) > p)]);
   }
 
   const grupos = comFases
     ? [
-        ...ctx.fases.map((f) => ({ id: f.id, titulo: `Preenchidos em ${f.name}`, campos: ctx.campos.filter((c) => origem(c) === f.id) })),
-        { id: SEM_FASE, titulo: "Em todas as fases", campos: ctx.campos.filter((c) => origem(c) === null) },
+        ...ctx.fases.map((f) => ({ id: f.id, titulo: `A partir de ${f.name}`, campos: ctx.campos.filter((c) => primeira(c) === f.id) })),
+        { id: SEM_FASE, titulo: "Em todas as fases", campos: ctx.campos.filter((c) => primeira(c) === null) },
       ]
     : [{ id: SEM_FASE, titulo: "", campos: ctx.campos }];
   const emArraste = ctx.campos.find((c) => c.id === arrastando);
@@ -117,14 +124,7 @@ export function ConfigCampos(ctx: ContextoCampos) {
       </Td>
       {comFases && (
         <Td>
-          <NativeSelect aria-label={`Fase de ${c.name}`} className="h-8 w-40" value={origem(c) ?? ""} disabled={pendente} onChange={(e) => mudarOrigem(c, e.target.value || null)}>
-            <option value="">todas as fases</option>
-            {ctx.fases.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </NativeSelect>
+          <SeletorFases nome={c.name} fases={ctx.fases} valor={fasesDe(c)} desabilitado={pendente} onChange={(v) => mudarFases(c, v)} />
         </Td>
       )}
       <Td className="text-xs text-muted-foreground">
@@ -156,7 +156,7 @@ export function ConfigCampos(ctx: ContextoCampos) {
           <CardTitle>Campos</CardTitle>
           {comFases && (
             <p className="mt-1 text-xs text-muted-foreground">
-              Cada campo é preenchido numa fase: fica oculto antes dela e somente leitura depois. Arraste entre os grupos para mudar.
+              Cada campo começa numa fase: fica oculto antes dela, editável nas fases marcadas e somente leitura nas outras. Arraste entre os grupos para mudar a primeira fase.
             </p>
           )}
         </div>
@@ -178,7 +178,7 @@ export function ConfigCampos(ctx: ContextoCampos) {
                 {comFases && <Th className="w-8" />}
                 <Th>Nome</Th>
                 <Th>Tipo</Th>
-                {comFases && <Th>Fase</Th>}
+                {comFases && <Th>Preenchido em</Th>}
                 <Th>Regras do campo</Th>
                 <Th className="w-24" />
               </Tr>
@@ -359,7 +359,13 @@ function EditorCampo({ ctx, campo, fechar }: { ctx: ContextoCampos; campo: Campo
   const [nome, setNome] = useState(campo?.name ?? "");
   const [slug, setSlug] = useState(campo?.slug ?? "");
   const [tipo, setTipo] = useState(campo?.type ?? "text");
-  const [config, setConfig] = useState<Config>(campo?.config ?? {});
+  // Fases arquivadas saem da seleção ao abrir: o servidor recusaria ids que não são fases ativas.
+  const [config, setConfig] = useState<Config>(() => {
+    const c = { ...(campo?.config ?? {}) };
+    if (Array.isArray(c.fill_phases)) c.fill_phases = fasesNaLista(ctx, c);
+    if (Array.isArray(c.fill_phases) && !(c.fill_phases as string[]).length) delete c.fill_phases;
+    return c;
+  });
   const [requiredExpr, setRequired] = useState(campo?.requiredExpr ?? "");
   const [visibleExpr, setVisible] = useState(campo?.visibleExpr ?? "");
   const [defaultExpr, setDefault] = useState(campo?.defaultValueExpr ?? "");
@@ -371,8 +377,15 @@ function EditorCampo({ ctx, campo, fechar }: { ctx: ContextoCampos; campo: Campo
   const proprias = ctx.campos.filter((c) => c.type === "relation" && c.id !== campo?.id);
   const condicoes = ctx.condicoes.filter((c) => c.caminho !== `card.${campo?.slug}`);
   const ehCalculado = calculado.has(tipo);
-  const origem = origemDoCampo(config);
-  const origemValida = origem && ctx.fases.some((f) => f.id === origem) ? origem : "";
+  const fasesSel = fasesNaLista(ctx, config);
+  const mudarFasesSel = (ids: string[]) =>
+    setConfig((c) => {
+      const resto = { ...c };
+      delete resto.fill_phases;
+      const ordenadas = ctx.fases.filter((f) => ids.includes(f.id)).map((f) => f.id);
+      if (!ordenadas.length) delete resto.editable_everywhere;
+      return ordenadas.length ? { ...resto, fill_phases: ordenadas } : resto;
+    });
 
   return (
     <form
@@ -421,37 +434,49 @@ function EditorCampo({ ctx, campo, fechar }: { ctx: ContextoCampos; campo: Campo
             </div>
           </div>
           {ctx.fases.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="campo-origem">{ehCalculado ? "Este campo aparece a partir da fase…" : "Este campo é preenchido na fase…"}</Label>
-              <NativeSelect
-                id="campo-origem"
-                aria-label="Fase do campo"
-                className="w-72"
-                value={origemValida}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setConfig((c) => {
-                    const resto = { ...c };
-                    delete resto.origin_phase_id;
-                    return v ? { ...resto, origin_phase_id: v } : resto;
-                  });
-                }}
-              >
-                <option value="">qualquer fase (sempre visível e editável)</option>
+            <fieldset className="flex flex-col gap-2" aria-describedby="campo-fases-ajuda">
+              <legend className="mb-1.5 text-sm font-medium">{ehCalculado ? "Aparece a partir das fases…" : "Preenchido nas fases…"}</legend>
+              <div className="flex flex-wrap gap-x-4 gap-y-2" role="group" aria-label="Preenchido nas fases">
                 {ctx.fases.map((f) => (
-                  <option key={f.id} value={f.id}>
+                  <label key={f.id} className="flex items-center gap-1.5 text-sm">
+                    <input
+                      type="checkbox"
+                      className="size-4"
+                      checked={fasesSel.includes(f.id)}
+                      onChange={(e) => mudarFasesSel(e.target.checked ? [...fasesSel, f.id] : fasesSel.filter((x) => x !== f.id))}
+                    />
                     {f.name}
-                  </option>
+                  </label>
                 ))}
-              </NativeSelect>
-              <p className="text-xs text-muted-foreground">
-                {origemValida
-                  ? ehCalculado
-                    ? "Fica oculto nas fases anteriores."
-                    : "Fica oculto nas fases anteriores e somente leitura nas seguintes."
-                  : "Sem fase definida: aparece e pode ser editado em todas as fases."}
+              </div>
+              {!ehCalculado && (
+                <label className="flex items-center gap-1.5 text-sm">
+                  <input
+                    type="checkbox"
+                    className="size-4"
+                    disabled={!fasesSel.length}
+                    checked={fasesSel.length > 0 && config.editable_everywhere === true}
+                    onChange={(e) =>
+                      setConfig((c) => {
+                        const resto = { ...c };
+                        delete resto.editable_everywhere;
+                        return e.target.checked ? { ...resto, editable_everywhere: true } : resto;
+                      })
+                    }
+                  />
+                  Pode ser editado em qualquer fase depois disso
+                </label>
+              )}
+              <p id="campo-fases-ajuda" className="text-xs text-muted-foreground">
+                {!fasesSel.length
+                  ? "Nenhuma fase marcada: aparece e pode ser editado em todas as fases."
+                  : ehCalculado
+                    ? "Fica oculto antes da primeira fase marcada."
+                    : config.editable_everywhere === true
+                      ? "Fica oculto antes da primeira fase marcada e pode ser editado em todas as seguintes."
+                      : "Fica oculto antes da primeira fase marcada, editável nas marcadas e somente leitura nas outras."}
               </p>
-            </div>
+            </fieldset>
           )}
           <div className="flex gap-5 text-sm">
             <label className="flex items-center gap-1.5">
@@ -832,5 +857,54 @@ function MatrizFases({ ctx, campo }: { ctx: ContextoCampos; campo: CampoConfig }
         </TBody>
       </Table>
     </div>
+  );
+}
+
+/** Multi-seleção de fases em chips: o resumo mostra as marcadas; abre uma lista de caixas. */
+function SeletorFases({
+  nome,
+  fases,
+  valor,
+  desabilitado,
+  onChange,
+}: {
+  nome: string;
+  fases: { id: string; name: string }[];
+  valor: string[];
+  desabilitado: boolean;
+  onChange: (v: string[]) => void;
+}) {
+  const marcadas = fases.filter((f) => valor.includes(f.id));
+  return (
+    <details className="group relative" data-preenchido-em={nome}>
+      <summary
+        className="flex min-h-8 cursor-pointer list-none flex-wrap items-center gap-1 rounded-md border bg-background px-2 py-1 hover:border-primary/50 [&::-webkit-details-marker]:hidden"
+        aria-label={`Preenchido em: ${nome}`}
+      >
+        {marcadas.length ? (
+          marcadas.map((f) => (
+            <span key={f.id} className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary-strong" data-chip-fase={f.name}>
+              {f.name}
+            </span>
+          ))
+        ) : (
+          <span className="text-xs text-muted-foreground">todas as fases</span>
+        )}
+      </summary>
+      <div className="absolute z-20 mt-1 flex w-48 flex-col gap-1.5 rounded-md border bg-background p-2 shadow-md" role="group" aria-label={`Fases de ${nome}`}>
+        {fases.map((f) => (
+          <label key={f.id} className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-4"
+              disabled={desabilitado}
+              checked={valor.includes(f.id)}
+              onChange={(e) => onChange(e.target.checked ? [...valor, f.id] : valor.filter((x) => x !== f.id))}
+            />
+            {f.name}
+          </label>
+        ))}
+      </div>
+    </details>
   );
 }

@@ -99,10 +99,12 @@ describe("config por tipo", () => {
     });
   });
 
-  it("fase de origem vale para qualquer tipo e precisa ser fase do board", () => {
-    expect(normalizarConfig("text", { origin_phase_id: "f2" }, ctx)).toEqual({ origin_phase_id: "f2" });
-    expect(normalizarConfig("currency", { origin_phase_id: "" }, ctx)).toEqual({ currency: { code: "BRL" } });
-    expect(erro("text", { origin_phase_id: "outra" })).toMatch(/fase de origem/);
+  it("fases de preenchimento valem para qualquer tipo e precisam ser fases do board", () => {
+    expect(normalizarConfig("text", { fill_phases: ["f2", "f1", "f2"], editable_everywhere: true }, ctx)).toEqual({ fill_phases: ["f2", "f1"], editable_everywhere: true });
+    expect(normalizarConfig("text", { fill_phases: ["f1"], editable_everywhere: "sim" }, ctx)).toEqual({ fill_phases: ["f1"] });
+    expect(normalizarConfig("text", { origin_phase_id: "f2" }, ctx)).toEqual({ fill_phases: ["f2"] });
+    expect(normalizarConfig("currency", { fill_phases: [], editable_everywhere: true }, ctx)).toEqual({ currency: { code: "BRL" } });
+    expect(erro("text", { fill_phases: ["outra"] })).toMatch(/fase de preenchimento/);
   });
 
   it("tipo inválido, texto calculado e tipos sem config", () => {

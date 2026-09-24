@@ -19,7 +19,7 @@ async function arrastar(page: Page, origem: Locator, destino: Locator) {
   await resposta;
 }
 
-test("campos agrupados por fase: mudar a fase pela coluna e arrastando entre grupos", async ({ page }) => {
+test("campos agrupados pela primeira fase: chips de fases, arrastar entre grupos e modal", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(EMAIL);
   await page.getByLabel("Senha").fill(SENHA);
@@ -29,33 +29,48 @@ test("campos agrupados por fase: mudar a fase pela coluna e arrastando entre gru
 
   const grupo = (titulo: string) => page.locator(`[data-grupo-fase="${titulo}"]`);
   const cnpj = (titulo: string) => grupo(titulo).locator('[data-config-campo="cnpj"]');
-  await expect(cnpj("Preenchidos em Elaboração")).toBeVisible();
-  await expect(grupo("Preenchidos em Vigente").locator('[data-config-campo="valor_pago"]')).toBeVisible();
+  const chips = page.locator('[data-preenchido-em="CNPJ"] [data-chip-fase]');
+  await expect(cnpj("A partir de Elaboração")).toBeVisible();
+  await expect(grupo("A partir de Vigente").locator('[data-config-campo="valor_pago"]')).toBeVisible();
   await expect(grupo("Em todas as fases").locator('[data-config-campo="parcelas"]')).toBeVisible();
+  await expect(chips).toHaveText(["Elaboração"]);
 
-  // Coluna "Fase"
-  const salvou = acaoConcluida(page);
-  await page.getByLabel("Fase de CNPJ").selectOption({ label: "Vigente" });
+  // Chips: marcar Vigente também; o agrupamento continua pela primeira fase
+  await page.getByLabel("Preenchido em: CNPJ").click();
+  const opcoes = page.getByRole("group", { name: "Fases de CNPJ" });
+  let salvou = acaoConcluida(page);
+  await opcoes.getByLabel("Vigente").check();
   await salvou;
-  await expect(cnpj("Preenchidos em Vigente")).toBeVisible();
+  await expect(chips).toHaveText(["Elaboração", "Vigente"]);
+  await expect(cnpj("A partir de Elaboração")).toBeVisible();
+
+  // Desmarcar Elaboração: passa a começar em Vigente
+  salvou = acaoConcluida(page);
+  await opcoes.getByLabel("Elaboração").click(); // a linha muda de grupo (remonta): click, não uncheck
+  await salvou;
   await page.reload();
-  await expect(cnpj("Preenchidos em Vigente")).toBeVisible();
+  await expect(cnpj("A partir de Vigente")).toBeVisible();
+  await expect(chips).toHaveText(["Vigente"]);
 
   // Arrastar para "Em todas as fases"
   await arrastar(page, page.getByRole("button", { name: "Arrastar CNPJ" }), grupo("Em todas as fases"));
   await expect(cnpj("Em todas as fases")).toBeVisible();
   await page.reload();
   await expect(cnpj("Em todas as fases")).toBeVisible();
-  await expect(page.getByLabel("Fase de CNPJ")).toHaveValue("");
+  await expect(page.locator('[data-preenchido-em="CNPJ"]')).toContainText("todas as fases");
 
-  // Modal do campo em linguagem de usuário; CEL recolhido em "Avançado"
+  // Modal: "Preenchido nas fases…" (multi) e "Pode ser editado em qualquer fase depois disso"
   await page.getByRole("button", { name: "Editar CNPJ" }).click();
   const modal = page.getByRole("dialog", { name: /Editar campo/ });
-  await expect(modal.getByText("Este campo é preenchido na fase…")).toBeVisible();
-  await expect(modal.getByRole("radiogroup", { name: "Obrigatório" }).getByRole("radio", { name: "nunca" })).toBeVisible();
+  const fasesModal = modal.getByRole("group", { name: "Preenchido nas fases" });
+  const sempre = modal.getByLabel("Pode ser editado em qualquer fase depois disso");
+  await expect(modal.getByText("Preenchido nas fases…")).toBeVisible();
+  await expect(sempre).toBeDisabled();
   await expect(modal.getByLabel("Slug do campo")).toBeHidden();
-  await modal.getByLabel("Fase do campo").selectOption({ label: "Elaboração" });
+  await fasesModal.getByLabel("Elaboração").check();
+  await expect(sempre).toBeEnabled();
   await modal.getByRole("button", { name: "Salvar campo" }).click();
   await expect(modal).toBeHidden();
-  await expect(cnpj("Preenchidos em Elaboração")).toBeVisible();
+  await expect(cnpj("A partir de Elaboração")).toBeVisible();
+  await expect(chips).toHaveText(["Elaboração"]);
 });

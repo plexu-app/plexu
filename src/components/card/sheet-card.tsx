@@ -34,11 +34,14 @@ export function SheetCard({
   anteriores: React.ReactNode | null;
   atual: React.ReactNode;
   lateral: React.ReactNode;
-  abas: Record<Aba, React.ReactNode>;
+  /** relacionados = null: sem relações inversas; a aba some. */
+  abas: Record<Aba, React.ReactNode | null>;
   contagens: { relacionados: number; comentarios: number };
 }) {
   const router = useRouter();
-  const [aba, setAba] = useState<Aba>("relacionados");
+  const disponiveis = (Object.keys(ROTULOS) as Aba[]).filter((a) => abas[a] !== null);
+  const [escolhida, setAba] = useState<Aba>(disponiveis[0] ?? "comentarios");
+  const aba = disponiveis.includes(escolhida) ? escolhida : (disponiveis[0] ?? "comentarios");
   const fechar = () => router.push(voltarPara, { scroll: false });
 
   return (
@@ -85,7 +88,7 @@ export function SheetCard({
 
           <div className="mt-8 border-t">
             <nav role="tablist" aria-label="Seções do card" className="-mt-px flex gap-1">
-              {(Object.keys(ROTULOS) as Aba[]).map((a) => (
+              {disponiveis.map((a) => (
                 <button
                   key={a}
                   role="tab"
@@ -104,7 +107,7 @@ export function SheetCard({
               ))}
             </nav>
             <div className="pt-4">
-              {(Object.keys(ROTULOS) as Aba[]).map((a) => (
+              {disponiveis.map((a) => (
                 <section key={a} role="tabpanel" aria-label={ROTULOS[a]} hidden={aba !== a}>
                   {abas[a]}
                 </section>

@@ -10,6 +10,8 @@ export interface CampoInputProps {
   id?: string;
   obrigatorio?: boolean;
   compacto?: boolean;
+  /** id do <form> dono dos inputs, quando eles ficam fora dele (atributo HTML form). */
+  form?: string;
 }
 
 type Opcao = string | { value?: string; id?: string; label?: string };
@@ -30,9 +32,9 @@ function paraDatetimeLocal(v: unknown): string {
 }
 
 /** Input HTML adequado ao tipo do campo, com name = f:<field_id>. */
-export function CampoInput({ campo, valor, pessoas, id, obrigatorio, compacto }: CampoInputProps) {
+export function CampoInput({ campo, valor, pessoas, id, obrigatorio, compacto, form }: CampoInputProps) {
   const name = nomeInput(campo.id);
-  const comum = { id, name, "aria-label": campo.name, "aria-required": obrigatorio || undefined };
+  const comum = { id, name, form, "aria-label": campo.name, "aria-required": obrigatorio || undefined };
   const texto = valor === null || valor === undefined ? "" : String(valor);
   switch (campo.type) {
     case "long_text":
@@ -63,7 +65,7 @@ export function CampoInput({ campo, valor, pessoas, id, obrigatorio, compacto }:
         <div className="flex flex-wrap gap-3" role="group" aria-label={campo.name}>
           {opcoesDe(campo.config).map((o) => (
             <label key={o.valor} className="flex items-center gap-1.5 text-sm">
-              <input type="checkbox" name={name} value={o.valor} defaultChecked={marcados.has(o.valor)} className="size-4" />
+              <input type="checkbox" name={name} form={form} value={o.valor} defaultChecked={marcados.has(o.valor)} className="size-4" />
               {o.rotulo}
             </label>
           ))}

@@ -116,7 +116,7 @@ create table fields (
   unique_value bool not null default false,
   default_value_expr text,                        -- CEL avaliada na criação
   validation jsonb,                               -- {regex, min, max, mask}
-  config jsonb not null default '{}',             -- por tipo: options[], relation{target_board,cardinality,exclusive,filter_expr,inverse_name,is_parent,on_parent_back,lock_fields_while_linked[]}, lookup{via_field,path,mode:'copy'|'ref'}, sequence{scope,pattern,seed,reset}, rollup{via_field,agg,expr,filter_expr}, formula{expr}, currency{code}
+  config jsonb not null default '{}',             -- qualquer tipo: fill_phases uuid[] (fases onde é preenchido), editable_everywhere bool (decisão 18-revisada); por tipo: options[], relation{target_board,cardinality,exclusive,filter_expr,inverse_name,is_parent,on_parent_back,lock_fields_while_linked[]}, lookup{via_field,path,mode:'copy'|'ref'}, sequence{scope,pattern,seed,reset}, rollup{via_field,agg,expr,filter_expr}, formula{expr}, currency{code}
   position int not null default 0,
   archived_at timestamptz,
   unique (board_id, slug)
