@@ -178,3 +178,30 @@ export async function comentarAction(ws: string, board: string, cardId: string, 
   revalidatePath(`${caminhoBoard(ws, board)}/c/${cardId}`);
   return r;
 }
+
+export type ResultadoCriacao = { ok: true; id: string } | { ok: false; motivo: string; campos?: string[] };
+
+/**
+ * Cria o card a partir do formulário da fase. Recusa formulário vazio.
+ * Erros do core (regras, validação, unicidade) voltam com os campos envolvidos.
+ */
+export async function criarCardComCamposAction(ws: string, board: string, phaseId: string | null, form: FormData): Promise<ResultadoCriacao> {
+  const ctx = await exigirMembro(ws);
+  const b = await exigirBoard(ctx, board);
+  const ids = new Set(form.getAll("campos").map(String));
+  const campos = b.campos.filter((c) => ids.has(c.id) && c.type !== "relation" && !TIPOS_CALCULADOS_UI.has(c.type));
+  const props = Object.fromEntries(
+    Object.entries(propsDoForm(form, campos)).filter(([, v]) => v !== null && v !== false && !(Array.isArray(v) && v.length === 0)),
+  );
+  if (!Object.keys(props).length) return { ok: false, motivo: "Preencha ao menos um campo para criar o card." };
+  try {
+    const card = await createCard({ boardId: b.id, phaseId, props, actor: ctx.actor });
+    revalidatePath(caminhoBoard(ws, board), "layout");
+    return { ok: true, id: card.id };
+  } catch (e) {
+    unstable_rethrow(e);
+    if (e instanceof CoreError) return { ok: false, motivo: e.message, campos: e.campos };
+    console.error(e);
+    return { ok: false, motivo: "Erro inesperado. Tente novamente." };
+  }
+}

@@ -1,6 +1,9 @@
-import Link from "next/link";
-import { AbasBoard } from "@/components/abas-board";
+import { BoardShell } from "@/components/board-shell";
+import type { FaseNovoCard } from "@/components/novo-card";
 import { exigirBoard, exigirMembro, podeConfigurar } from "@/server/acesso";
+import { dadosConfiguracao } from "@/server/config-board";
+import { membrosDoWorkspace } from "@/server/consultas";
+import { camposDaFase } from "./_lib/campos-da-fase";
 
 export default async function LayoutBoard({
   children,
@@ -12,27 +15,25 @@ export default async function LayoutBoard({
   const { ws, board } = await params;
   const ctx = await exigirMembro(ws);
   const b = await exigirBoard(ctx, board);
-  const base = `/w/${ws}/b/${b.slug}`;
-  const abas = [
-    ...(b.kind === "workflow" ? [{ href: base, rotulo: "Kanban" }] : []),
-    { href: `${base}/table`, rotulo: "Tabela" },
-    ...(podeConfigurar(ctx) ? [{ href: `${base}/settings`, rotulo: "Configurações" }] : []),
-  ];
+  const [config, membros] = await Promise.all([dadosConfiguracao(ctx.ws.id, b.id), membrosDoWorkspace(ctx.ws.id)]);
+  const ajustes = config.ajustes.flatMap((a) => (a.fieldId && a.phaseId ? [{ ...a, fieldId: a.fieldId, phaseId: a.phaseId }] : []));
+  const hoje = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+  const fases: FaseNovoCard[] = (b.fases.length ? b.fases : [{ id: null as string | null, name: "" }]).map((f) => ({
+    id: f.id,
+    nome: f.name,
+    campos: camposDaFase(b, ajustes, f.id, hoje),
+  }));
   return (
-    <div className="flex h-[calc(100vh-3rem)] flex-col">
-      <div className="flex items-center gap-4 border-b px-4 py-2">
-        <nav className="text-sm text-muted-foreground">
-          <Link href={`/w/${ws}`} className="hover:underline">
-            Boards
-          </Link>
-          <span className="px-1">/</span>
-          <Link href={base} className="font-semibold text-foreground">
-            {b.name}
-          </Link>
-        </nav>
-        <AbasBoard abas={abas} />
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto">{children}</div>
-    </div>
+    <BoardShell
+      ws={ws}
+      board={b.slug}
+      nome={b.name}
+      kind={b.kind}
+      podeConfigurar={podeConfigurar(ctx)}
+      fases={fases}
+      pessoas={Object.fromEntries(membros.map((m) => [m.id, m.nome]))}
+    >
+      {children}
+    </BoardShell>
   );
 }
