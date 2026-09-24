@@ -23,7 +23,8 @@ export type EventoCard =
   | { type: "card.link_added"; data: DadosLink }
   | { type: "card.link_removed"; data: DadosLink }
   | { type: "card.deleted"; data: { phase_id: string | null } }
-  | { type: "card.restored"; data: { phase_id: string | null } };
+  | { type: "card.restored"; data: { phase_id: string | null } }
+  | { type: "comment.added"; data: { comment_id: string } };
 
 export type TipoEvento = EventoCard["type"];
 
@@ -60,4 +61,40 @@ function semUndefined<T extends object>(data: T): T {
     else if (k === "old" || k === "new") saida[k] = null;
   }
   return saida as T;
+}
+
+// ---------------------------------------------------------------------------
+// Configuração (decisão 13: log cobre dados e configuração)
+// ---------------------------------------------------------------------------
+
+export type EntidadeConfig = "workspace" | "board" | "phase" | "field" | "rule" | "field_phase_settings";
+
+export interface EventoConfig {
+  entidade: EntidadeConfig;
+  acao: "created" | "updated" | "archived" | "reordered";
+  id: string;
+  /** Valores novos (e antigos em updated) relevantes para auditoria. */
+  dados?: Record<string, unknown>;
+}
+
+/** Grava config.changed. boardId é null para mudanças de workspace. */
+export async function emitirEventoConfig(
+  tx: Tx,
+  origem: { workspaceId: string; boardId: string | null; actor: Actor },
+  evento: EventoConfig,
+): Promise<string> {
+  validarAtor(origem.actor);
+  const [row] = await tx
+    .insert(events)
+    .values({
+      workspaceId: origem.workspaceId,
+      boardId: origem.boardId,
+      cardId: null,
+      type: "config.changed",
+      actorType: origem.actor.type,
+      actorId: origem.actor.id,
+      data: semUndefined({ ...evento }),
+    })
+    .returning({ id: events.id });
+  return row.id;
 }
