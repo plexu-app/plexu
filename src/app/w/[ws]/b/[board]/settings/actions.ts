@@ -15,6 +15,7 @@ import {
   criarFase,
   criarRegra,
   definirExibicaoKanban,
+  definirOrigemCampo,
   editarCampo,
   editarRegra,
   moverFase,
@@ -55,6 +56,10 @@ export async function arquivarFaseAction(ws: string, board: string, faseId: stri
 
 export async function salvarCampoAction(ws: string, board: string, fieldId: string | null, dados: DadosCampo) {
   return comBoard(ws, board, (a) => (fieldId ? editarCampo(a, fieldId, dados) : criarCampo(a, dados)));
+}
+/** Fase de origem do campo (null = todas as fases). Usado ao arrastar o campo entre fases. */
+export async function definirOrigemCampoAction(ws: string, board: string, fieldId: string, faseId: string | null) {
+  return comBoard(ws, board, (a) => definirOrigemCampo(a, fieldId, faseId));
 }
 export async function arquivarCampoAction(ws: string, board: string, fieldId: string) {
   return comBoard(ws, board, (a) => arquivarCampo(a, fieldId));

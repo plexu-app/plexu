@@ -13,14 +13,17 @@ import { cn } from "@/lib/utils";
 export function useAcaoConfig() {
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
-  const executar = (fn: () => Promise<ResultadoConfig>, sucesso?: string, depois?: () => void) =>
+  const executar = (fn: () => Promise<ResultadoConfig>, sucesso?: string, depois?: () => void, falhou?: () => void) =>
     iniciar(async () => {
       const r = await fn();
       if (r.ok) {
         if (sucesso) toast.success(sucesso);
         depois?.();
         router.refresh();
-      } else toast.error("Não foi possível salvar", { description: r.motivo });
+      } else {
+        falhou?.();
+        toast.error("Não foi possível salvar", { description: r.motivo });
+      }
     });
   return { pendente, executar };
 }
