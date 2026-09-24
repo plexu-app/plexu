@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Sidebar recolhida (atributo no <html>, aplicado antes da pintura; ver components/sidebar.tsx). */
+@custom-variant recolhida (html[data-sidebar="recolhida"] &);
+
 /* Tokens no padrão shadcn/ui (Tailwind v4). Sem tema elaborado no MVP. */
 :root {
   --plexu-ink: #1f2a44;

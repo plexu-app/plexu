@@ -1,5 +1,5 @@
 import { Marca } from "@/components/marca";
-import { Sidebar } from "@/components/sidebar";
+import { Sidebar, SCRIPT_SIDEBAR } from "@/components/sidebar";
 import { exigirMembro, podeConfigurar } from "@/server/acesso";
 import { boardsDoWorkspace } from "@/server/consultas";
 
@@ -11,6 +11,8 @@ export default async function LayoutWorkspace({ children, params }: { children: 
   const boards = await boardsDoWorkspace(ctx.ws.id);
   return (
     <div className="min-h-screen">
+      {/* Aplica o estado salvo da sidebar antes da pintura (sem piscar). */}
+      <script dangerouslySetInnerHTML={{ __html: SCRIPT_SIDEBAR }} />
       <Sidebar
         ws={ctx.ws.slug}
         wsNome={ctx.ws.name}
@@ -19,7 +21,7 @@ export default async function LayoutWorkspace({ children, params }: { children: 
         podeCriar={podeConfigurar(ctx)}
         marca={<Marca tamanho={22} />}
       />
-      <div className="flex min-h-screen flex-col pl-60">{children}</div>
+      <div className="flex min-h-screen flex-col pl-60 transition-[padding] recolhida:pl-14">{children}</div>
     </div>
   );
 }
