@@ -46,6 +46,11 @@ export function formatarValor(campo: CampoFmt, v: unknown, pessoas?: Map<string,
     }
     case "number":
       return typeof v === "number" ? numero.format(v) : String(v);
+    case "lookup": {
+      // Valor de card relacionado: sem o tipo de origem, formata o básico (número, sim/não, listas).
+      const um = (x: unknown) => (typeof x === "number" ? numero.format(x) : x === true ? "Sim" : x === false ? "Não" : typeof x === "object" && x ? JSON.stringify(x) : String(x));
+      return Array.isArray(v) ? v.map(um).join(", ") : um(v);
+    }
     case "date":
       return formatarData(String(v));
     case "datetime":
@@ -118,7 +123,11 @@ export function descreverEvento(e: EventoFmt, ctx: ContextoEventos): string {
 
 const EM_COMPUTED = new Set(["rollup", "dynamic_text", "formula", "lookup"]);
 
-/** Valor de um campo no card: calculados vêm de computed; o resto (inclusive sequence) de props. */
+/**
+ * Valor de um campo no card: calculados vêm de computed; o resto (inclusive sequence) de props.
+ * Lookup: modo "ref" em computed, modo "copy" em props.
+ */
 export function valorDoCard(campo: { id: string; type: string }, card: { props: Record<string, unknown>; computed: Record<string, unknown> }): unknown {
+  if (campo.type === "lookup") return card.computed[campo.id] ?? card.props[campo.id] ?? null;
   return (EM_COMPUTED.has(campo.type) ? card.computed[campo.id] : card.props[campo.id]) ?? null;
 }

@@ -396,6 +396,72 @@ interface ConfigRollup {
 
 const SLUG = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+// ---------------------------------------------------------------------------
+// Lookup: valor de um campo do card ligado (config.lookup = { via_field, path, mode })
+//   mode "ref" (padrão): calculado em computed e recalculado quando o card ligado muda.
+//   mode "copy": gravado em props quando a ligação muda; não acompanha mudanças no card ligado.
+// ---------------------------------------------------------------------------
+
+export interface ConfigLookup {
+  via_field?: string;
+  path?: string;
+  mode?: "copy" | "ref";
+}
+
+export const configLookup = (c: Campo): ConfigLookup => (c.config.lookup ?? {}) as ConfigLookup;
+export const modoLookup = (c: Campo): "copy" | "ref" => (configLookup(c).mode === "copy" ? "copy" : "ref");
+
+/** Cards ligados a cardId pela relação via (relação deste board: destinos; de outro board: origens). */
+function ligadosPor(q: Quadro, cardId: string, via: string | undefined, ligs: Ligacao[]): string[] {
+  return ligs
+    .filter((l) => l.campo.id === via)
+    .flatMap((l) => (l.campo.boardId === q.id ? (l.fromCardId === cardId ? [l.toCardId] : []) : l.toCardId === cardId ? [l.fromCardId] : []));
+}
+
+/** Um card ligado → o valor dele; vários → lista dos valores não vazios; nenhum → null. */
+async function valorLookup(op: Op, q: Quadro, cardId: string, c: Campo, ligs: Ligacao[]): Promise<unknown> {
+  const cfg = configLookup(c);
+  const ids = [...new Set(ligadosPor(q, cardId, cfg.via_field, ligs))];
+  if (!ids.length || !cfg.path) return null;
+  const regs = await registrosDe(op, ids);
+  const valores = ids.map((id) => regs.get(id)?.[cfg.path!]).filter((v) => !vazio(v));
+  if (ids.length === 1) return valores[0] ?? null;
+  return valores.length ? valores.flat() : null;
+}
+
+/**
+ * Lookups em modo "copy" que usam a relação viaFieldId: grava em props o valor atual dos cards
+ * ligados. Chamado quando uma ligação é criada ou removida (nunca quando o card ligado muda).
+ */
+export async function atualizarCopias(op: Op, cardIds: string[], viaFieldId: string): Promise<void> {
+  for (const id of new Set(cardIds)) {
+    const [card] = await op.tx.select().from(cards).where(and(eq(cards.id, id), isNull(cards.deletedAt)));
+    if (!card) continue;
+    const q = await carregarQuadro(op, card.boardId);
+    const copias = q.campos.filter((c) => c.type === "lookup" && modoLookup(c) === "copy" && configLookup(c).via_field === viaFieldId);
+    if (!copias.length) continue;
+    const ligs = await lerLigacoes(op, [id]);
+    const props = { ...card.props };
+    const mudancas: { fieldId: string; old: unknown; new: unknown }[] = [];
+    for (const c of copias) {
+      const novo = await valorLookup(op, q, id, c, ligs);
+      if (JSON.stringify(novo ?? null) === JSON.stringify(props[c.id] ?? null)) continue;
+      mudancas.push({ fieldId: c.id, old: props[c.id] ?? null, new: novo });
+      if (novo === null) delete props[c.id];
+      else props[c.id] = novo;
+    }
+    if (!mudancas.length) continue;
+    await op.tx.update(cards).set({ props, title: tituloDe(q, props, card.computed), updatedAt: new Date() }).where(eq(cards.id, id));
+    for (const m of mudancas) {
+      await emitirEvento(
+        op.tx,
+        { workspaceId: card.workspaceId, boardId: card.boardId, cardId: id, actor: op.actor },
+        { type: "card.field_updated", data: { field_id: m.fieldId, old: m.old, new: m.new, copia: true } },
+      );
+    }
+  }
+}
+
 function exprItem(fonte: string, variavel: string): ExprCompilada {
   return compilar(SLUG.test(fonte) ? `${variavel}.${fonte}` : fonte);
 }
@@ -479,7 +545,7 @@ async function calcularTexto(op: Op, q: Quadro, vista: VistaCard, c: Campo, ligs
   return saida;
 }
 
-/** Recalcula rollups e dynamic_text de um card (rollups primeiro; textos podem usá-los). */
+/** Recalcula rollups, lookups "ref" e dynamic_text de um card (textos por último: podem usá-los). */
 async function calcular(op: Op, q: Quadro, card: CardRow, ligs: Ligacao[]): Promise<Record<string, unknown>> {
   const computed: Record<string, unknown> = { ...card.computed };
   const vista = { ...vistaDe(card), computed };
@@ -489,6 +555,18 @@ async function calcular(op: Op, q: Quadro, card: CardRow, ligs: Ligacao[]): Prom
       computed[c.id] = await calcularRollup(op, q, card, c, ligs, eu);
     } catch {
       computed[c.id] = null; // configuração inválida não bloqueia escrita; valor fica nulo
+    }
+  }
+  // Lookups "ref" antes dos textos (textos podem usá-los); "copy" vive em props, não em computed.
+  for (const c of q.campos.filter((x) => x.type === "lookup")) {
+    if (modoLookup(c) === "copy") {
+      delete computed[c.id];
+      continue;
+    }
+    try {
+      computed[c.id] = await valorLookup(op, q, card.id, c, ligs);
+    } catch {
+      computed[c.id] = null;
     }
   }
   for (const c of q.campos.filter((x) => x.type === "dynamic_text")) {
@@ -506,6 +584,12 @@ function dependeDe(q: Quadro, l: Ligacao, outroEhOrigem: boolean): boolean {
     return outroEhOrigem ? l.campo.boardId === q.id : l.campo.boardId !== q.id;
   });
   if (rollup) return true;
+  // Lookup "ref" pela relação: recalcula quando o card ligado muda.
+  const lookup = q.campos.some((c) => {
+    if (c.type !== "lookup" || modoLookup(c) !== "ref" || configLookup(c).via_field !== l.campo.id) return false;
+    return outroEhOrigem ? l.campo.boardId === q.id : l.campo.boardId !== q.id;
+  });
+  if (lookup) return true;
   return q.campos.some((c) => {
     if (c.type !== "dynamic_text") return false;
     try {

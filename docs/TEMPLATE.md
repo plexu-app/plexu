@@ -60,6 +60,7 @@ Tudo é referenciado por `key`, nunca por UUID. A key de campo é o identificado
 | `sequence` | `{ "pattern": "PC-{n}", "scope": "global"\|"year"\|"month"\|"day"\|"parent", "seed", "pad", "parent_field" }` |
 | `rollup` | `{ "via", "agg": "count"\|"sum"\|"avg"\|"min"\|"max", "expr", "filter", "format": "currency" }`. `via` é a key de uma relação deste board ou `"<board>.<campo>"` para uma relação de outro board que aponta para este |
 | `dynamic_text` | `{ "template": "{numero} · {card.global - card.pago}" }` |
+| `lookup` | valor de card relacionado: `{ "via", "path", "mode": "ref"|"copy" }`. `via` como em `rollup`; `path` é o identificador de um campo no card ligado (ou `titulo`, `fase`, `status`). `ref` acompanha o card ligado; `copy` grava o valor quando a ligação é criada ou trocada. Um card ligado → valor; vários → lista. Pode ser o título do board |
 | `phase_settings` | exceções por fase: `[{ "phase", "visible", "editable", "required" }]` (`null` = sem exceção) |
 
 ### Automações (reservado)
@@ -119,6 +120,8 @@ Fases (ordem, final, destinos permitidos), campos (tipo, obrigatório, editável
 | automação `run_a_formula` `SUM(%{item_NN.valor}...)` sobre a série | `rollup` `sum` pela relação (várias automações 1/12…12/12 → 1 rollup) |
 | `run_a_formula` entre campos do mesmo card (`SUBTRACT`, `SUM`, …) | `dynamic_text` com a expressão |
 | `move_single_card` ao entrar na fase P, se condição, de volta para fase anterior | regra `can_enter(P) := !(condição)`; a mesma condição em várias fases vira **uma** regra |
+| título do card = conexão | campo `lookup` (`ref`, `path: "titulo"`) pela conexão, usado como título |
+| `update_card_field` no filho da série copiando um campo simples do pai | o campo do filho vira `lookup` `ref` pela relação da série (a série de automações deixa de existir) |
 | demais automações | `automations` com `status: "pendente"`; séries numeradas iguais viram uma só |
 
 Condições do Pipefy viram CEL: OU entre grupos de `expressions_structure`, E dentro do grupo; `blank`/`present` → `== null`/`!= null`; `equals`/`not_equals` (em seleção múltipla, `in`); comparações numéricas; `contains`/`not_contains`; `current_phase` → `fase`; campo de um card conectado (`conexao.campo`) → `filhos("rel").algum(p, …)` (na série, generaliza o item NN para todos os filhos; o relatório avisa).

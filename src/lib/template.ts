@@ -53,6 +53,8 @@ export interface CampoTemplate {
   /** via: key de relação deste board, ou "<board>.<campo>" para relação de outro board que aponta para este. */
   rollup?: { via: string; agg: "count" | "sum" | "avg" | "min" | "max"; expr?: string; filter?: string; format?: "currency" };
   dynamic_text?: { template: string };
+  /** Valor de card relacionado. via como em rollup; path: slug do campo lá (ou titulo, fase, status). */
+  lookup?: { via: string; path: string; mode?: "ref" | "copy" };
   phase_settings?: AjusteFaseTemplate[];
 }
 
@@ -164,6 +166,14 @@ export function validarTemplate(t: Template, externos: Iterable<string> = []): E
         else if (bk !== b.key && rel.relation?.board !== b.key) err(oc, `rollup.via ${via} não aponta para este board`);
         if (c.rollup?.agg !== "count" && !c.rollup?.expr) err(oc, "rollup sem expr (campo a agregar)");
         expr(`${oc} › rollup.filter`, c.rollup?.filter);
+      }
+      if (c.type === "lookup") {
+        const via = c.lookup?.via ?? "";
+        const [bk, ck] = via.includes(".") ? via.split(".") : [b.key, via];
+        const rel = boards.get(bk)?.fields.find((x) => x.key === ck);
+        if (!rel || rel.type !== "relation") err(oc, `lookup.via não é uma relação: ${via}`);
+        else if (bk !== b.key && rel.relation?.board !== b.key) err(oc, `lookup.via ${via} não aponta para este board`);
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(c.lookup?.path ?? "")) err(oc, "lookup.path deve ser o identificador de um campo do card relacionado");
       }
       if (c.type === "dynamic_text") {
         if (!c.dynamic_text?.template) err(oc, "dynamic_text sem template");

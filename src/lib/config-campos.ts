@@ -15,6 +15,7 @@ export const TIPOS_CAMPO: { tipo: string; rotulo: string; calculado?: boolean }[
   { tipo: "cnpj", rotulo: "CNPJ" },
   { tipo: "attachment", rotulo: "Anexo" },
   { tipo: "relation", rotulo: "Relação" },
+  { tipo: "lookup", rotulo: "Valor de card relacionado", calculado: true },
   { tipo: "sequence", rotulo: "Sequência (numeração)", calculado: true },
   { tipo: "rollup", rotulo: "Rollup (soma/contagem)", calculado: true },
   { tipo: "dynamic_text", rotulo: "Texto calculado", calculado: true },
@@ -119,6 +120,14 @@ function normalizarPorTipo(tipo: string, bruto: unknown, ctx: ContextoConfig): R
           ...(escopo === "parent" ? { parent_field: parent } : {}),
         },
       };
+    }
+    case "lookup": {
+      const l = (c.lookup ?? {}) as Record<string, unknown>;
+      const via = texto(l.via_field);
+      if (!ctx.relacoes.has(via)) throw new ErroConfigCampo("escolha a relação que leva ao card relacionado");
+      const path = texto(l.path);
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(path)) throw new ErroConfigCampo("informe o campo do card relacionado (slug, ou titulo/fase/status)");
+      return { lookup: { via_field: via, path, mode: l.mode === "copy" ? "copy" : "ref" } };
     }
     case "rollup": {
       const r = (c.rollup ?? {}) as Record<string, unknown>;

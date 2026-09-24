@@ -7,32 +7,33 @@ const ROTULO: Record<DestinoAutomacao, string> = {
   regra: "regra",
   rollup: "rollup",
   dynamic_text: "texto calculado",
+  lookup: "valor de card relacionado",
   absorvida: "absorvida pelo modelo",
   pendente: "automação pendente",
 };
 
 export function relatorioMarkdown(r: Relatorio, titulo = "Relatório de conversão Pipefy → Plexu"): string {
   const t = r.totais;
-  const convertidas = t.regras + t.rollups + t.textosCalculados;
+  const convertidas = t.regras + t.rollups + t.textosCalculados + t.lookups;
   const soAtivas = r.boards.flatMap((b) => b.automacoes).filter((a) => a.ativa);
   const l: string[] = [`# ${titulo}`, ""];
   if (r.anonimizado) l.push("_Nomes anonimizados._", "");
   l.push(
     "## Resumo",
     "",
-    `**${t.automacoes} automações no Pipefy (${t.ativas} ativas) → ${convertidas} regras/rollups/textos calculados + ${t.pendentes} automações pendentes no Plexu** (${t.absorvidas} deixam de existir porque o modelo já cobre).`,
+    `**${t.automacoes} automações no Pipefy (${t.ativas} ativas) → ${convertidas} regras/rollups/textos calculados/lookups + ${t.pendentes} automações pendentes no Plexu** (${t.regras} regras, ${t.rollups} rollups, ${t.textosCalculados} textos calculados, ${t.lookups} lookups) (${t.absorvidas} deixam de existir porque o modelo já cobre).`,
     "",
     `Só as ativas: ${soAtivas.length} → ${soAtivas.filter((a) => a.destino !== "pendente").length} convertidas ou absorvidas.`,
     "",
     `Além disso, ${t.regrasConfig} regra(s) vêm da configuração do Pipefy (destinos permitidos por fase, filho obrigatório para finalizar), não de automações.`,
     "",
-    "| Objeto | Campos (origem → Plexu) | Automações | Regras (de automação) | Regras (de configuração) | Rollups | Textos calc. | Pendentes | Condicionais convertidas |",
-    "|---|---|---|---|---|---|---|---|---|",
+    "| Objeto | Campos (origem → Plexu) | Automações | Regras (de automação) | Regras (de configuração) | Rollups | Textos calc. | Lookups | Pendentes | Condicionais convertidas |",
+    "|---|---|---|---|---|---|---|---|---|---|",
   );
   for (const b of r.boards) {
     const plexu = b.campos.filter((c) => c.destino).length;
     l.push(
-      `| ${esc(b.nome)} (${b.origem.tipo}) | ${b.campos.length} → ${new Set(b.campos.map((c) => c.destino).filter(Boolean)).size} (${plexu} linhas mapeadas) | ${b.automacoes.length} | ${b.regras} | ${b.regrasConfig} | ${b.rollups} | ${b.textosCalculados} | ${b.pendentes} | ${b.condicionais.convertidas}/${b.condicionais.total} |`,
+      `| ${esc(b.nome)} (${b.origem.tipo}) | ${b.campos.length} → ${new Set(b.campos.map((c) => c.destino).filter(Boolean)).size} (${plexu} linhas mapeadas) | ${b.automacoes.length} | ${b.regras} | ${b.regrasConfig} | ${b.rollups} | ${b.textosCalculados} | ${b.lookups} | ${b.pendentes} | ${b.condicionais.convertidas}/${b.condicionais.total} |`,
     );
   }
   l.push("");

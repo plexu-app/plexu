@@ -10,7 +10,7 @@ import type { PfAutomacao, PfCampo, PfCondicao, PfCondicional, PfExport, PfFase 
 // Relatório
 // ---------------------------------------------------------------------------
 
-export type DestinoAutomacao = "regra" | "rollup" | "dynamic_text" | "absorvida" | "pendente";
+export type DestinoAutomacao = "regra" | "rollup" | "dynamic_text" | "lookup" | "absorvida" | "pendente";
 
 export interface LinhaCampo {
   origem: string;
@@ -48,6 +48,8 @@ export interface RelatorioBoard {
   regrasConfig: number;
   rollups: number;
   textosCalculados: number;
+  /** Campos que viraram "valor de card relacionado" (lookup). */
+  lookups: number;
   pendentes: number;
 }
 
@@ -55,7 +57,7 @@ export interface Relatorio {
   anonimizado: boolean;
   boards: RelatorioBoard[];
   naoExportavel: string[];
-  totais: { automacoes: number; ativas: number; regras: number; regrasConfig: number; rollups: number; textosCalculados: number; absorvidas: number; pendentes: number };
+  totais: { automacoes: number; ativas: number; regras: number; regrasConfig: number; rollups: number; textosCalculados: number; lookups: number; absorvidas: number; pendentes: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -248,6 +250,7 @@ class Conversor {
           regrasConfig: soma((r) => r.regrasConfig),
           rollups: soma((r) => r.rollups),
           textosCalculados: soma((r) => r.textosCalculados),
+          lookups: soma((r) => r.lookups),
           absorvidas: soma((r) => r.automacoes.filter((a) => a.destino === "absorvida").length),
           pendentes: soma((r) => r.pendentes),
         },
@@ -305,6 +308,7 @@ class Conversor {
         regrasConfig: 0,
         rollups: 0,
         textosCalculados: 0,
+        lookups: 0,
         pendentes: 0,
       },
     };
@@ -453,13 +457,22 @@ class Conversor {
       linha(c.key, c.type, map.nota);
     }
     const tf = b.exp.repo.title_field?.id ? b.porRef.get(b.exp.repo.title_field.id)?.campo : null;
-    // Título do card é texto: conexão/anexo/seleção múltipla como título não funcionam (sem lookup).
+    // Título vindo de uma conexão: lookup do título do card ligado (como o Pipefy mostra).
+    if (tf?.type === "relation") {
+      const lk: CampoTemplate = { key: unico(slugCampo(`${tf.key}_titulo`), usados), name: `${tf.name} (título)`, type: "lookup", lookup: { via: tf.key, path: "titulo", mode: "ref" } };
+      b.tpl.fields.push(lk);
+      b.tpl.title_field = lk.key;
+      b.rel.lookups++;
+      b.rel.campos.push({ origem: `título do card = ${tf.name}`, tipoOrigem: "title_field", fase: null, destino: lk.key, tipoDestino: "lookup", nota: "título do card conectado (lookup ref)" });
+      return;
+    }
+    // Anexo/seleção múltipla não servem de título: primeiro campo de texto.
     const titulavel = (c: CampoTemplate | null | undefined) => !!c && !["relation", "attachment", "multi_select"].includes(c.type);
     b.tpl.title_field = (titulavel(tf) ? tf!.key : null) ?? b.tpl.fields.find((f) => f.type === "text")?.key ?? null;
     if (tf && !titulavel(tf))
       b.rel.naoRepresentado.push({
         item: `título do card = ${tf.name}`,
-        motivo: `campo ${tf.type} não serve de título (o Pipefy mostra o título do card conectado; falta lookup): usado ${b.tpl.title_field ?? "nenhum"}`,
+        motivo: `campo ${tf.type} não serve de título: usado ${b.tpl.title_field ?? "nenhum"}`,
       });
   }
 
@@ -671,6 +684,15 @@ class Conversor {
         continue;
       }
 
+      // Cópia de um campo deste card para o card filho da série → lookup "ref" no filho.
+      const lookupFilho = this.copiaDoPai(b, a);
+      if (lookupFilho) {
+        linha.destino = "lookup";
+        linha.ref = lookupFilho;
+        linha.nota = "o filho lê o valor do pai (lookup), sem cópia por automação";
+        continue;
+      }
+
       // Sem equivalente: automação pendente (séries de nomes iguais viram uma só)
       const chave = `${a.event_id}|${a.action_id}|${nomeBase(a.name)}`;
       const p = pendentes.get(chave) ?? { a, linhas: [] };
@@ -733,6 +755,42 @@ class Conversor {
         if (linhas.length > 1) l.nota = `agrupada: ${linhas.length} automações → 1 pendente`;
       }
     }
+  }
+
+  /**
+   * update_card_field no board filho de uma série, copiando campos simples deste card: cada campo
+   * de destino no filho vira lookup "ref" pela relação da série. Devolve "<board>.<campo>" ou null.
+   */
+  copiaDoPai(b: BoardConv, a: PfAutomacao): string | null {
+    if (a.action_id !== "update_card_field") return null;
+    const s = b.series.find((x) => x.tipo === "conexao" && x.relKey && x.alvo && x.alvo.exp.repo.id === a.action_repo_v2?.id);
+    const fms = a.action_params?.field_map ?? [];
+    if (!s?.alvo || !fms.length) return null;
+    const pares = fms.map((fm) => {
+      const refs = [...(fm.value ?? "").matchAll(/%{([^}|]+)}/g)].map((x) => x[1]);
+      const origem = refs.length === 1 && (fm.value ?? "").trim() === `%{${refs[0]}}` ? b.porRef.get(refs[0]) : undefined;
+      const destino = s.alvo!.porRef.get(fm.fieldId)?.campo;
+      return origem?.campo && !origem.serie && destino ? { origem: origem.campo, destino } : null;
+    });
+    if (pares.some((p) => !p)) return null;
+    for (const p of pares) {
+      const { origem, destino } = p!;
+      if (destino.type !== "lookup") {
+        delete destino.required;
+        delete destino.editable_everywhere;
+        delete destino.currency;
+        delete destino.options;
+        destino.type = "lookup";
+        destino.lookup = { via: `${b.key}.${s.relKey}`, path: origem.key, mode: "ref" };
+        s.alvo.rel.lookups++;
+        const l = s.alvo.rel.campos.find((x) => x.destino === destino.key);
+        if (l) {
+          l.tipoDestino = "lookup";
+          l.nota = [l.nota, `lê ${b.tpl.name}.${origem.key} (lookup)`].filter(Boolean).join("; ");
+        }
+      }
+    }
+    return pares.map((p) => `${s.alvo!.key}.${p!.destino.key}`).join(", ");
   }
 
   formula(b: BoardConv, a: PfAutomacao, linha: LinhaAutomacao): boolean {

@@ -66,6 +66,10 @@ function configDoCampo(
     };
   }
   if (c.dynamic_text) cfg.dynamic_text = c.dynamic_text;
+  if (c.lookup) {
+    const [bk, ck] = c.lookup.via.includes(".") ? c.lookup.via.split(".") : [b.key, c.lookup.via];
+    cfg.lookup = { via_field: campo(bk, ck), path: c.lookup.path, mode: c.lookup.mode === "copy" ? "copy" : "ref" };
+  }
   if (c.fill_phases?.length) {
     cfg.fill_phases = c.fill_phases.map((f) => ids.fases.get(`${b.key}.${f}`) ?? "");
     if (c.editable_everywhere) cfg.editable_everywhere = true;
@@ -283,6 +287,15 @@ export async function exportarTemplate(wsSlug: string, boardSlugs: string[], nom
       };
     }
     if (cfg.dynamic_text) c.dynamic_text = cfg.dynamic_text as { template: string };
+    const lk = cfg.lookup as Config | undefined;
+    if (lk) {
+      const via = refCampo.get(String(lk.via_field));
+      c.lookup = {
+        via: via ? (via.boardId === b.id ? via.slug : `${slugBoard.get(via.boardId) ?? via.boardId}.${via.slug}`) : String(lk.via_field),
+        path: String(lk.path),
+        mode: lk.mode === "copy" ? "copy" : "ref",
+      };
+    }
     const ajustes = aps.filter((a) => a.fieldId === f.id && a.phaseId && keyFase.has(a.phaseId));
     if (ajustes.length) c.phase_settings = ajustes.map((a) => ({ phase: keyFase.get(a.phaseId!)!, visible: a.visible, editable: a.editable, required: a.required }));
     return c;
