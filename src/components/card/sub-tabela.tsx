@@ -4,9 +4,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Calculator, Plus, Unlink } from "lucide-react";
 import { toast } from "sonner";
-import { criarFilhoAction, desligarAction, editarRelacionadoAction } from "@/app/w/[ws]/actions";
+import { criarFilhoAction, criarFilhoComCamposAction, desligarAction, editarRelacionadoAction } from "@/app/w/[ws]/actions";
 import { CampoInput } from "@/components/card/campo-input";
 import { BuscaRelacao } from "@/components/card/seletor-relacao";
+import { NovoCard, type FaseNovoCard } from "@/components/novo-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, Table, TBody, Td, Th, THead, Tr } from "@/components/ui/misc";
 import { formatarValor, idCurto, TIPOS_CALCULADOS_UI, tituloOu, valorDoCard } from "@/lib/formatar";
@@ -41,6 +42,9 @@ export function SubTabela({
   boardFilho,
   linhas,
   pessoas,
+  obrigatorios,
+  faseNovo,
+  hoje,
 }: {
   ws: string;
   board: string;
@@ -50,6 +54,11 @@ export function SubTabela({
   boardFilho: { id: string; slug: string; name: string; campos: CampoFilho[]; titleFieldId: string | null };
   linhas: Linha[];
   pessoas: Record<string, string>;
+  /** Campos do board filho que podem ser obrigatórios na criação. */
+  obrigatorios: string[];
+  /** Formulário completo da fase inicial do board filho. */
+  faseNovo: FaseNovoCard;
+  hoje: string;
 }) {
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
@@ -58,6 +67,11 @@ export function SubTabela({
   const colunas = colunasSubTabela(boardFilho.campos, boardFilho.titleFieldId);
   const titulo = boardFilho.campos.find((c) => c.id === boardFilho.titleFieldId);
   const criaveis = [...(titulo && TIPOS_CRIACAO.has(titulo.type) ? [titulo] : []), ...colunas.filter((c) => TIPOS_CRIACAO.has(c.type))];
+  // "Adicionar" rápido só se os campos dele cobrem todos os obrigatórios do filho (a relação com o pai
+  // conta como preenchida quando é do lado do filho). Senão, o botão abre o formulário completo.
+  const cobertos = new Set([...criaveis.map((c) => c.id), ...(lado === "destino" ? [campo.id] : [])]);
+  const rapido = obrigatorios.every((id) => cobertos.has(id));
+  const [modal, setModal] = useState(false);
 
   const executar = (fn: () => Promise<{ ok: boolean; motivo?: string }>, erro: string, depois?: () => void) =>
     iniciar(async () => {
@@ -140,6 +154,7 @@ export function SubTabela({
           </TBody>
         </Table>
 
+        {rapido ? (
         <form
           ref={formNovo}
           className="flex flex-wrap items-end gap-2 border-t px-2 pt-3"
@@ -161,6 +176,29 @@ export function SubTabela({
             <Plus /> Adicionar
           </Button>
         </form>
+        ) : (
+          <div className="border-t px-2 pt-3">
+            <Button type="button" size="sm" onClick={() => setModal(true)} aria-label={`Adicionar em ${campo.name}`}>
+              <Plus /> Adicionar
+            </Button>
+            <NovoCard
+              ws={ws}
+              board={boardFilho.slug}
+              fase={faseNovo}
+              aberto={modal}
+              onOpenChange={setModal}
+              pessoas={pessoas}
+              hoje={hoje}
+              titulo={`Novo item em ${campo.name}`}
+              descricao={`${boardFilho.name}, vinculado a este card. `}
+              enviar={(form) => criarFilhoComCamposAction(ws, board, cardId, campo.id, lado, boardFilho.id, form)}
+              aoCriar={() => {
+                toast.success("Item criado");
+                router.refresh();
+              }}
+            />
+          </div>
+        )}
         {lado === "origem" && (
           <div className="px-2 pb-2">
             <BuscaRelacao

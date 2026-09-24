@@ -35,8 +35,16 @@ async function main() {
     // Parcelas (base)
     const [bp] = await tx.insert(boards).values({ workspaceId: ws.id, slug: "parcelas", name: "Parcelas", kind: "database" }).returning();
     await cfg(bp.id, "board", bp.id);
-    const campo = async (boardId: string, slug: string, name: string, type: string, position: number, config: Record<string, unknown> = {}) => {
-      const [f] = await tx.insert(fields).values({ boardId, slug, name, type: type as never, position, config }).returning();
+    const campo = async (
+      boardId: string,
+      slug: string,
+      name: string,
+      type: string,
+      position: number,
+      config: Record<string, unknown> = {},
+      extra: { visibleExpr?: string; requiredExpr?: string; helpText?: string } = {},
+    ) => {
+      const [f] = await tx.insert(fields).values({ boardId, slug, name, type: type as never, position, config, ...extra }).returning();
       await cfg(boardId, "field", f.id, { slug, type });
       return f.id;
     };
@@ -46,6 +54,15 @@ async function main() {
     await campo(bp.id, "medida", "Medida", "boolean", 3);
     await campo(bp.id, "paga", "Paga", "boolean", 4);
     await tx.update(boards).set({ titleFieldId: pNumero }).where(eq(boards.id, bp.id));
+
+    // Aditivos (base): descrição obrigatória em texto longo, que o "Adicionar" rápido da sub-tabela
+    // não cobre; o botão abre o formulário completo do board já vinculado ao contrato.
+    const [ba] = await tx.insert(boards).values({ workspaceId: ws.id, slug: "aditivos", name: "Aditivos", kind: "database" }).returning();
+    await cfg(ba.id, "board", ba.id);
+    const aNumero = await campo(ba.id, "numero", "Número", "sequence", 0, { sequence: { pattern: "AD-{n}", scope: "global", seed: 1, pad: 4 } });
+    await campo(ba.id, "descricao", "Descrição", "long_text", 1, {}, { requiredExpr: "true", helpText: "O que muda no contrato." });
+    await campo(ba.id, "valor", "Valor", "currency", 2, { currency: { code: "BRL" } });
+    await tx.update(boards).set({ titleFieldId: aNumero }).where(eq(boards.id, ba.id));
 
     // Contratos (fluxo)
     const [bc] = await tx.insert(boards).values({ workspaceId: ws.id, slug: "contratos", name: "Contratos", kind: "workflow" }).returning();
@@ -74,6 +91,20 @@ async function main() {
       rollup: { via_field: cParcelas, agg: "sum", expr: "valor", filter_expr: "card.paga == true", format: "currency" },
     });
     await campo(bc.id, "resumo", "Resumo", "dynamic_text", 8, { dynamic_text: { template: "{numero} · {qtd_parcelas} parcela(s)" } });
+    const cAditivos = await campo(bc.id, "aditivos", "Aditivos", "relation", 9, {
+      relation: { target_board: ba.id, cardinality: "many", exclusive: true, inverse_name: "contrato" },
+    });
+    await garantirIndiceExclusivo(tx, cAditivos);
+    await campo(bc.id, "exige_garantia", "Exige garantia", "boolean", 10);
+    await campo(
+      bc.id,
+      "valor_garantia",
+      "Valor da garantia",
+      "currency",
+      11,
+      { currency: { code: "BRL" } },
+      { visibleExpr: "card.exige_garantia == true", requiredExpr: "card.exige_garantia == true" },
+    );
     await tx.update(boards).set({ titleFieldId: cNumero }).where(eq(boards.id, bc.id));
     await tx.insert(fieldPhaseSettings).values({ fieldId: cObjeto, phaseId: fases["Elaboração"], required: true });
 

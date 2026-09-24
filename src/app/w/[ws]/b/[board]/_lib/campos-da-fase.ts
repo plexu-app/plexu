@@ -2,6 +2,7 @@
 // ajuste da fase. Visibilidade e obrigatoriedade são avaliadas sobre os valores digitados
 // (src/lib/campos-criacao.ts), no navegador e de novo no servidor; o core é a palavra final.
 import type { CampoCriacaoDef } from "@/lib/campos-criacao";
+import { TIPOS_CALCULADOS_UI } from "@/lib/formatar";
 import type { BoardCompleto } from "@/server/consultas";
 
 export interface AjusteFase {
@@ -50,3 +51,19 @@ export function camposDaFase(board: Pick<BoardCompleto, "campos">, ajustes: Ajus
 }
 
 export const hojeSP = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+
+/**
+ * Campos que podem ser obrigatórios ao criar na fase (ajuste required=true, ou sem ajuste e com
+ * required_expr), inclusive relações. Condicionais contam: o formulário rápido não avalia expressões.
+ */
+export function obrigatoriosPossiveis(board: Pick<BoardCompleto, "campos">, ajustes: AjusteFase[], faseId: string | null): string[] {
+  return board.campos
+    .filter((c) => !TIPOS_CALCULADOS_UI.has(c.type))
+    .filter((c) => {
+      const aj = faseId ? ajustes.find((a) => a.fieldId === c.id && a.phaseId === faseId) : undefined;
+      if (aj?.visible === false) return false;
+      const expr = c.requiredExpr?.trim();
+      return aj?.required ?? (!!expr && expr !== "false");
+    })
+    .map((c) => c.id);
+}

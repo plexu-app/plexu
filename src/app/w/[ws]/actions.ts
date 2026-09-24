@@ -7,7 +7,7 @@ import { addComment, CoreError, createCard, linkCards, moveCard, unlinkCards, up
 import { exigirBoard, exigirCard, exigirConfigurador, exigirMembro } from "@/server/acesso";
 import { criarFilho } from "@/server/cards";
 import { criarBoard, ErroConfig } from "@/server/config";
-import { dadosConfiguracao } from "@/server/config-board";
+import { ajustesDoBoard } from "@/server/config-board";
 import { boardPorId, buscarCards, cardDoWorkspace, type BoardCompleto } from "@/server/consultas";
 import { estadoCriacao, registroDoForm, valoresDoFormData } from "@/lib/campos-criacao";
 import { camposDaFase, hojeSP } from "./b/[board]/_lib/campos-da-fase";
@@ -188,8 +188,8 @@ export type ResultadoCriacao = { ok: true; id: string } | { ok: false; motivo: s
  * Props da criação a partir do formulário da fase, revalidando no servidor o que o navegador avaliou:
  * só entram campos editáveis e visíveis na fase com os valores enviados. Obrigatórios ficam com o core.
  */
-async function propsDaCriacao(wsId: string, b: BoardCompleto, phaseId: string | null, form: FormData) {
-  const ajustes = (await dadosConfiguracao(wsId, b.id)).ajustes.flatMap((a) => (a.fieldId && a.phaseId ? [{ ...a, fieldId: a.fieldId, phaseId: a.phaseId }] : []));
+async function propsDaCriacao(b: BoardCompleto, phaseId: string | null, form: FormData) {
+  const ajustes = await ajustesDoBoard(b.id);
   const defs = camposDaFase(b, ajustes, phaseId);
   const valores = valoresDoFormData(form);
   const fase = phaseId ? b.fases.find((f) => f.id === phaseId)?.name ?? null : null;
@@ -218,7 +218,7 @@ async function criarComTratamento(ws: string, board: string, fn: () => Promise<{
 export async function criarCardComCamposAction(ws: string, board: string, phaseId: string | null, form: FormData): Promise<ResultadoCriacao> {
   const ctx = await exigirMembro(ws);
   const b = await exigirBoard(ctx, board);
-  const props = await propsDaCriacao(ctx.ws.id, b, phaseId, form);
+  const props = await propsDaCriacao(b, phaseId, form);
   if (!Object.keys(props).length) return { ok: false, motivo: "Preencha ao menos um campo para criar o card." };
   return criarComTratamento(ws, board, () => createCard({ boardId: b.id, phaseId, props, actor: ctx.actor }));
 }
@@ -242,7 +242,7 @@ export async function criarFilhoComCamposAction(
   const bf = await boardPorId(ctx.ws.id, boardFilhoId);
   const campo = (lado === "origem" ? b : bf)?.campos.find((x) => x.id === fieldId && x.type === "relation");
   if (!bf || !campo || alvoDe(campo.config) !== (lado === "origem" ? bf.id : b.id)) return { ok: false, motivo: "Relação inválida." };
-  const props = await propsDaCriacao(ctx.ws.id, bf, bf.fases[0]?.id ?? null, form);
+  const props = await propsDaCriacao(bf, bf.fases[0]?.id ?? null, form);
   if (!Object.keys(props).length) return { ok: false, motivo: "Preencha ao menos um campo para criar o card." };
   return criarComTratamento(ws, board, () => criarFilho({ actor: ctx.actor, paiId: cardId, campo, lado, boardFilhoId: bf.id, props }));
 }
