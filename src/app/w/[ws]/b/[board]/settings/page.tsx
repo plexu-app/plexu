@@ -1,4 +1,5 @@
 import { ConfigCampos } from "@/components/config/config-campos";
+import { ConfigCartao } from "@/components/config/config-cartao";
 import { ConfigFases } from "@/components/config/config-fases";
 import { ConfigRegras } from "@/components/config/config-regras";
 import { exigirBoard, exigirMembro, podeConfigurar } from "@/server/acesso";
@@ -12,7 +13,7 @@ export default async function Configuracoes({ params }: { params: Promise<{ ws: 
     return <main className="p-6 text-sm text-muted-foreground">Apenas owner ou admin podem configurar este board.</main>;
   }
   const d = await dadosConfiguracao(ctx.ws.id, b.id);
-  const fases = b.fases.map((f) => ({ id: f.id, name: f.name, isTerminal: f.isTerminal }));
+  const fases = b.fases.map((f) => ({ id: f.id, name: f.name, isTerminal: f.isTerminal, color: f.color }));
   const relacoesVia = [
     ...b.campos.filter((c) => c.type === "relation").map((c) => ({ id: c.id, rotulo: `${c.name} (deste board)` })),
     ...d.relacoesEntrando.map((r) => ({ id: r.id, rotulo: `${r.boardName} · ${r.name}` })),
@@ -20,6 +21,16 @@ export default async function Configuracoes({ params }: { params: Promise<{ ws: 
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-4 p-4">
       {b.kind === "workflow" && <ConfigFases ws={ws} board={b.slug} fases={fases} />}
+      {b.kind === "workflow" && (
+        <ConfigCartao
+          ws={ws}
+          board={b.slug}
+          campos={b.campos}
+          titleFieldId={b.titleFieldId}
+          atuais={b.settings.kanban_fields ?? []}
+          prazo={b.settings.kanban_due_field ?? null}
+        />
+      )}
       <ConfigCampos
         ws={ws}
         board={b.slug}

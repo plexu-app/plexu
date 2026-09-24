@@ -8,5 +8,5 @@ export default async function PaginaBoard({ params }: { params: Promise<{ ws: st
   const b = await exigirBoard(ctx, board);
   // Base (sem fases) abre na tabela.
   if (b.kind !== "workflow" || !b.fases.length) redirect(`/w/${ws}/b/${b.slug}/table`);
-  return <VistaKanban ws={ws} board={b} />;
+  return <VistaKanban ws={ws} wsId={ctx.ws.id} board={b} />;
 }

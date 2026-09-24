@@ -18,7 +18,7 @@ export default async function PaginaCard({
   const tabela = v === "tabela" || b.kind !== "workflow" || !b.fases.length;
   return (
     <>
-      {tabela ? <VistaTabela ws={ws} wsId={ctx.ws.id} board={b} /> : <VistaKanban ws={ws} board={b} />}
+      {tabela ? <VistaTabela ws={ws} wsId={ctx.ws.id} board={b} /> : <VistaKanban ws={ws} wsId={ctx.ws.id} board={b} />}
       <PainelCard ws={ws} board={board} cardId={card} voltarPara={tabela ? `/w/${ws}/b/${b.slug}/table` : `/w/${ws}/b/${b.slug}`} />
     </>
   );

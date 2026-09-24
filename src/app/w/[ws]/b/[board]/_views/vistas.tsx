@@ -1,12 +1,21 @@
 // Views do board reutilizadas pelas páginas e pela página direta do card (board por baixo do painel).
-import { Kanban, type CardKanban } from "@/components/kanban";
+import { Kanban } from "@/components/kanban";
+import { corDaFase, montarCartoes } from "@/components/kanban-dados";
 import { TabelaBoard } from "@/components/tabela-board";
 import { colunasDaTabela, linhasDaTabela } from "@/lib/tabela";
 import { cardsDoBoard, membrosDoWorkspace, type BoardCompleto } from "@/server/consultas";
 
-export async function VistaKanban({ ws, board }: { ws: string; board: BoardCompleto }) {
-  const cards: CardKanban[] = (await cardsDoBoard(board.id)).map((c) => ({ id: c.id, title: c.title, phaseId: c.phaseId }));
-  const colunas = board.fases.map((f) => ({ id: f.id, nome: f.name, terminal: f.isTerminal }));
+export async function VistaKanban({ ws, wsId, board }: { ws: string; wsId: string; board: BoardCompleto }) {
+  const [lista, membros] = await Promise.all([cardsDoBoard(board.id), membrosDoWorkspace(wsId)]);
+  const hoje = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+  const cards = montarCartoes(lista, board.campos, {
+    titleFieldId: board.titleFieldId,
+    kanbanFields: board.settings.kanban_fields,
+    prazoField: board.settings.kanban_due_field,
+    pessoas: new Map(membros.map((m) => [m.id, m.nome])),
+    hoje,
+  });
+  const colunas = board.fases.map((f, i) => ({ id: f.id, nome: f.name, terminal: f.isTerminal, cor: corDaFase(f.color, i) }));
   return <Kanban ws={ws} board={board.slug} colunas={colunas} cards={cards} />;
 }
 
