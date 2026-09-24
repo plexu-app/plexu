@@ -372,3 +372,18 @@ export async function canBack(
 export async function canDelete(op: Op, alvo: AlvoContexto): Promise<ResultadoRegra> {
   return avaliarRegras(op, await lerRegras(op, alvo.quadro.id, "can_delete", alvo.card.phaseId), alvo, "can_delete");
 }
+
+/**
+ * Avaliação completa de um movimento, sem escrever. Avançar: can_leave(origem, com obrigatórios de
+ * todas as fases até ela) + can_enter(destino). Voltar: can_back + can_enter.
+ */
+export async function avaliarMovimento(op: Op, alvo: AlvoContexto, origem: Fase | null, destino: Fase): Promise<ResultadoRegra> {
+  if (origem && destino.position < origem.position) {
+    const r = await canBack(op, { ...alvo, origem: origem.id, destino: destino.id });
+    if (!r.ok) return r;
+  } else if (origem) {
+    const r = await canLeave(op, { ...alvo, origem: origem.id, destino: destino.id });
+    if (!r.ok) return r;
+  }
+  return canEnter(op, { ...alvo, origem: origem?.id ?? null, destino: destino.id });
+}

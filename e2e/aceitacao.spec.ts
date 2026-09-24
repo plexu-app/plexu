@@ -55,7 +55,6 @@ test("contrato com 2 parcelas: mover sem medir é bloqueado; depois de medir, mo
     await parcelas.getByRole("button", { name: "Adicionar" }).click();
     await expect(parcelas.locator("[data-linha]")).toHaveCount(i + 1);
   }
-  await painel.getByRole("tab", { name: "Campos" }).click();
   await expect(painel.locator('[data-campo="Valor global"]')).toContainText("1.500,50");
 
   // Fechar volta ao board; mover sem medir é bloqueado (toast com o motivo, card volta)

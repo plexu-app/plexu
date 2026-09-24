@@ -1,13 +1,16 @@
 // Conteúdo do card para o painel lateral (página /c/[card]).
 import Link from "next/link";
-import { estadoDosCampos } from "@/core";
+import { estadoDosCampos, movimentosDoCard } from "@/core";
 import { Comentarios } from "@/components/card/comentarios";
 import { FormCampos } from "@/components/card/form-campos";
+import { LateralCard } from "@/components/card/lateral-card";
 import { SeletorRelacao } from "@/components/card/seletor-relacao";
 import { SheetCard } from "@/components/card/sheet-card";
 import { SubTabela } from "@/components/card/sub-tabela";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/misc";
-import { descreverEvento, formatarDataHora, idCurto, tituloOu, valorDoCard, type CampoFmt } from "@/lib/formatar";
+import { montarCartoes } from "@/components/kanban-dados";
+import { origemDoCampo } from "@/lib/fase-origem";
+import { descreverEvento, formatarDataHora, formatarValor, idCurto, TIPOS_CALCULADOS_UI, tituloOu, valorDoCard, type CampoFmt } from "@/lib/formatar";
 import { exigirBoard, exigirCard, exigirMembro } from "@/server/acesso";
 import { ajustesDoBoard } from "@/server/config-board";
 import { camposDaFase, hojeSP, obrigatoriosPossiveis } from "../_lib/campos-da-fase";
@@ -27,8 +30,9 @@ export async function PainelCard({ ws, board, cardId, voltarPara }: { ws: string
   const b = await exigirBoard(ctx, board);
   const card = await exigirCard(b, cardId);
 
-  const [estado, relacoes, comentarios, eventos, membros] = await Promise.all([
+  const [estado, movimentos, relacoes, comentarios, eventos, membros] = await Promise.all([
     estadoDosCampos({ cardId: card.id, actor: ctx.actor }),
+    card.phaseId ? movimentosDoCard({ cardId: card.id, actor: ctx.actor }) : Promise.resolve(null),
     relacoesDoCard(b, card.id),
     comentariosDoCard(card.id),
     eventosDoCard(card.id),
@@ -59,9 +63,35 @@ export async function PainelCard({ ws, board, cardId, voltarPara }: { ws: string
   const hoje = hojeSP();
 
   const pessoas = Object.fromEntries(membros.map((m) => [m.id, m.nome]));
-  const camposForm = b.campos
-    .filter((c) => c.type !== "relation" && estado[c.id]?.visivel !== false)
-    .map((c) => ({ campo: c, valor: valorDoCard(c, card), estado: estado[c.id] }));
+  // Colunas: à esquerda, campos cuja fase de origem é anterior à atual e que não são editáveis nela
+  // (leitura, agrupados por fase); no centro, o formulário da fase atual com o resto dos visíveis.
+  const fase = b.fases.find((f) => f.id === card.phaseId);
+  const mapaPessoas = new Map(Object.entries(pessoas));
+  const faseAnterior = (c: CampoUI) => {
+    const o = origemDoCampo(c.config);
+    const f = o ? b.fases.find((x) => x.id === o) : undefined;
+    return fase && f && f.position < fase.position ? f : undefined;
+  };
+  const visiveis = b.campos.filter((c) => c.type !== "relation" && estado[c.id]?.visivel !== false);
+  const naEsquerda = (c: CampoUI) => !!faseAnterior(c) && (estado[c.id]?.editavel === false || TIPOS_CALCULADOS_UI.has(c.type));
+  const camposForm = visiveis.filter((c) => !naEsquerda(c)).map((c) => ({ campo: c, valor: valorDoCard(c, card), estado: estado[c.id] }));
+  const gruposAnteriores = b.fases
+    .filter((f) => fase && f.position < fase.position)
+    .map((f) => ({
+      fase: f,
+      itens: visiveis
+        .filter((c) => naEsquerda(c) && faseAnterior(c)?.id === f.id)
+        .map((c) => ({ campo: c, texto: formatarValor(c, valorDoCard(c, card), mapaPessoas) }))
+        .filter((x) => x.texto !== ""),
+    }))
+    .filter((g) => g.itens.length > 0);
+  const cartao = montarCartoes([card], b.campos, {
+    titleFieldId: b.titleFieldId,
+    prazoField: b.settings.kanban_due_field ?? null,
+    pessoas: mapaPessoas,
+    hoje,
+  })[0];
+  const posicao = new Map(b.fases.map((f) => [f.id, f.position]));
   const ehSubTabela = (c: CampoUI, lado: "origem" | "destino") => {
     const cfg = (c.config.relation ?? {}) as { is_parent?: boolean; cardinality?: string };
     return lado === "origem" ? !cfg.is_parent && cfg.cardinality !== "one" : !!cfg.is_parent;
@@ -155,20 +185,59 @@ export async function PainelCard({ ws, board, cardId, voltarPara }: { ws: string
     }),
   ].filter((x) => x !== null);
 
-  const fase = b.fases.find((f) => f.id === card.phaseId);
   return (
     <SheetCard
       key={card.id}
-      ws={ws}
-      board={b.slug}
       cardId={card.id}
       titulo={tituloOu(card.title, card.id)}
       fase={fase ? { id: fase.id, nome: fase.name } : null}
-      fases={b.fases.map((f) => ({ id: f.id, nome: f.name }))}
       status={card.status}
       voltarPara={voltarPara}
+      anteriores={
+        fase ? (
+          <>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fases anteriores</h3>
+            {gruposAnteriores.length === 0 && <p className="text-sm text-muted-foreground">Nada preenchido em fases anteriores.</p>}
+            {gruposAnteriores.map((g) => (
+              <details key={g.fase.id} open className="rounded-md border" data-fase-anterior={g.fase.name}>
+                <summary className="cursor-pointer px-3 py-2 text-sm font-medium">{g.fase.name}</summary>
+                <dl className="flex flex-col gap-2 border-t px-3 py-2">
+                  {g.itens.map((x) => (
+                    <div key={x.campo.id} data-campo-anterior={x.campo.name}>
+                      <dt className="text-xs text-muted-foreground">{x.campo.name}</dt>
+                      <dd className="text-sm break-words">{x.texto}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </details>
+            ))}
+          </>
+        ) : null
+      }
+      atual={
+        <>
+          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{fase ? `Nesta fase: ` : "Campos"}</h3>
+          <FormCampos key={card.updatedAt.toISOString()} ws={ws} board={b.slug} cardId={card.id} campos={camposForm} pessoas={pessoas} />
+        </>
+      }
+      lateral={
+        <LateralCard
+          ws={ws}
+          board={b.slug}
+          cardId={card.id}
+          voltarPara={voltarPara}
+          responsavel={cartao?.responsavel ?? null}
+          prazo={cartao?.prazo ?? null}
+          movimentos={
+            movimentos?.map((m) => ({
+              ...m,
+              nome: b.fases.find((f) => f.id === m.faseId)?.name ?? "",
+              volta: !!fase && (posicao.get(m.faseId) ?? 0) < fase.position,
+            })) ?? null
+          }
+        />
+      }
       abas={{
-        campos: <FormCampos key={card.updatedAt.toISOString()} ws={ws} board={b.slug} cardId={card.id} campos={camposForm} pessoas={pessoas} />,
         relacionados: relacionados.length ? (
           <div className="flex flex-col gap-4">{relacionados}</div>
         ) : (

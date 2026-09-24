@@ -123,6 +123,7 @@ Cadastro único de parceiros (dedup por raiz CNPJ), Gestão contratual + Parcela
 15. Contexto das expressões (regras, condições, visibilidade, fórmulas): `card`, `pai`/`pais(conexão)`, `filhos(conexão)` com `todos/algum/contar/soma`, `fase`, `fase_origem`, `fase_destino`, `usuario`, `existe(board, filtro)`. Nomes PT-BR na UI; CEL por baixo.
 16. Equipe: 1 dev + colaboradores eventuais → MVP enxuto (seção 10).
 17. Exclusão lógica de card **não** remove `card_links`: a ligação fica inativa (`card_links.deleted_at` espelhado) e volta ao restaurar o card. Relação exclusiva, rollups, `filhos()`/`pais()` e cardinalidade ignoram cards com `deleted_at`. Motivo: restaurar um card devolve suas relações sem reconstrução manual, e o índice único parcial da exclusiva continua garantido pelo banco.
+18. **Fase de origem** do campo (`fields.config.origin_phase_id`, opcional): antes dela o campo fica oculto; na fase, editável; depois, somente leitura. `field_phase_settings` continua como override, atributo por atributo. Campo sem origem mantém o comportamento de sempre (visível e editável em todas as fases). Em campos calculados, a origem é a fase em que passam a ser exibidos. Obrigatório vale para sair da fase (e para criar nela ou depois dela).
 
 ## 8. Referência Pipefy — catálogo de capacidades (doc pública developers.pipefy.com, set/2026)
 Índice completo em `https://developers.pipefy.com/llms.txt` (markdown por página; OpenAPI). Usar como checklist de paridade.

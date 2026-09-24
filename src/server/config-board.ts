@@ -147,7 +147,11 @@ async function contextoConfig(tx: Tx, a: Alvo): Promise<ContextoConfig> {
     .select({ id: fields.id, slug: fields.slug, type: fields.type })
     .from(fields)
     .where(and(eq(fields.boardId, a.boardId), isNull(fields.archivedAt)));
-  return { boardId: a.boardId, boards: new Map(bs.map((b) => [b.id, b.name])), relacoes, campos };
+  const fs = await tx
+    .select({ id: phases.id })
+    .from(phases)
+    .where(and(eq(phases.boardId, a.boardId), isNull(phases.archivedAt)));
+  return { boardId: a.boardId, boards: new Map(bs.map((b) => [b.id, b.name])), relacoes, campos, fases: new Set(fs.map((f) => f.id)) };
 }
 
 function prepararCampo(d: DadosCampo, ctx: ContextoConfig) {
@@ -250,6 +254,31 @@ export async function arquivarCampo(a: Alvo, fieldId: string) {
     const [f] = await tx.update(fields).set({ archivedAt: new Date() }).where(and(eq(fields.id, fieldId), eq(fields.boardId, a.boardId))).returning();
     if (!f) throw new ErroConfig("campo não encontrado");
     await registrar(tx, a, "field", "archived", fieldId, { slug: f.slug });
+  });
+}
+
+/** Muda só a fase de origem do campo (null = sem origem). Usado ao arrastar o campo entre fases. */
+export async function definirOrigemCampo(a: Alvo, fieldId: string, faseId: string | null) {
+  return db.transaction(async (tx) => {
+    await exigirBoardDoWs(tx, a);
+    const [f] = await tx
+      .select()
+      .from(fields)
+      .where(and(eq(fields.id, fieldId), eq(fields.boardId, a.boardId), isNull(fields.archivedAt)));
+    if (!f) throw new ErroConfig("campo não encontrado");
+    if (faseId) {
+      const [p] = await tx
+        .select({ id: phases.id })
+        .from(phases)
+        .where(and(eq(phases.id, faseId), eq(phases.boardId, a.boardId), isNull(phases.archivedAt)));
+      if (!p) throw new ErroConfig("fase de origem inválida");
+    }
+    const antes = (f.config ?? {}) as Record<string, unknown>;
+    const { origin_phase_id: anterior, ...resto } = antes;
+    if ((anterior ?? null) === faseId) return;
+    const config = faseId ? { ...resto, origin_phase_id: faseId } : resto;
+    await tx.update(fields).set({ config }).where(eq(fields.id, fieldId));
+    await registrar(tx, a, "field", "updated", fieldId, { antes: { origin_phase_id: anterior ?? null }, depois: { origin_phase_id: faseId } });
   });
 }
 

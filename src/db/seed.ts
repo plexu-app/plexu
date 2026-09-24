@@ -78,31 +78,34 @@ async function main() {
       await cfg(bc.id, "phase", p.id, { name: f.name });
     }
     const cNumero = await campo(bc.id, "numero", "Número", "sequence", 0, { sequence: { pattern: "CT-{n}/{ano}", scope: "year", seed: 1, pad: 4 } });
-    const cObjeto = await campo(bc.id, "objeto", "Objeto", "text", 1);
-    await campo(bc.id, "contratante", "Contratante", "text", 2);
-    await campo(bc.id, "cnpj", "CNPJ", "cnpj", 3);
+    // Fase de origem: preenchido na Elaboração, somente leitura depois; "Valor pago" aparece a partir da Vigência.
+    const elab = { origin_phase_id: fases["Elaboração"] };
+    const cObjeto = await campo(bc.id, "objeto", "Objeto", "text", 1, elab);
+    await campo(bc.id, "contratante", "Contratante", "text", 2, elab);
+    await campo(bc.id, "cnpj", "CNPJ", "cnpj", 3, elab);
     const cParcelas = await campo(bc.id, "parcelas", "Parcelas", "relation", 4, {
       relation: { target_board: bp.id, cardinality: "many", exclusive: true, inverse_name: "contrato" },
     });
     await garantirIndiceExclusivo(tx, cParcelas);
-    await campo(bc.id, "qtd_parcelas", "Qtd. parcelas", "rollup", 5, { rollup: { via_field: cParcelas, agg: "count" } });
-    await campo(bc.id, "valor_global", "Valor global", "rollup", 6, { rollup: { via_field: cParcelas, agg: "sum", expr: "valor", format: "currency" } });
+    await campo(bc.id, "qtd_parcelas", "Qtd. parcelas", "rollup", 5, { ...elab, rollup: { via_field: cParcelas, agg: "count" } });
+    await campo(bc.id, "valor_global", "Valor global", "rollup", 6, { ...elab, rollup: { via_field: cParcelas, agg: "sum", expr: "valor", format: "currency" } });
     await campo(bc.id, "valor_pago", "Valor pago", "rollup", 7, {
+      origin_phase_id: fases["Vigente"],
       rollup: { via_field: cParcelas, agg: "sum", expr: "valor", filter_expr: "card.paga == true", format: "currency" },
     });
-    await campo(bc.id, "resumo", "Resumo", "dynamic_text", 8, { dynamic_text: { template: "{numero} · {qtd_parcelas} parcela(s)" } });
+    await campo(bc.id, "resumo", "Resumo", "dynamic_text", 8, { ...elab, dynamic_text: { template: "{numero} · {qtd_parcelas} parcela(s)" } });
     const cAditivos = await campo(bc.id, "aditivos", "Aditivos", "relation", 9, {
       relation: { target_board: ba.id, cardinality: "many", exclusive: true, inverse_name: "contrato" },
     });
     await garantirIndiceExclusivo(tx, cAditivos);
-    await campo(bc.id, "exige_garantia", "Exige garantia", "boolean", 10);
+    await campo(bc.id, "exige_garantia", "Exige garantia", "boolean", 10, elab);
     await campo(
       bc.id,
       "valor_garantia",
       "Valor da garantia",
       "currency",
       11,
-      { currency: { code: "BRL" } },
+      { ...elab, currency: { code: "BRL" } },
       { visibleExpr: "card.exige_garantia == true", requiredExpr: "card.exige_garantia == true" },
     );
     await tx.update(boards).set({ titleFieldId: cNumero }).where(eq(boards.id, bc.id));

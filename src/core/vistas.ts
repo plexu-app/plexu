@@ -8,7 +8,7 @@ import {
   TIPOS_SOMENTE_LEITURA,
   vistaDe,
 } from "./meta";
-import { compilar, montarContexto, travaCampo } from "./rules";
+import { avaliarMovimento, compilar, montarContexto, travaCampo } from "./rules";
 import type { ExprCompilada } from "../lib/expr";
 import type { Actor, OpcoesOp } from "./types";
 
@@ -73,6 +73,30 @@ export function estadoDosCampos(input: { cardId: string; actor: Actor }, opts?: 
         travado,
         ...(erro ? { erro } : {}),
       };
+    }
+    return saida;
+  });
+}
+
+export interface MovimentoPossivel {
+  faseId: string;
+  permitido: boolean;
+  /** Motivo do bloqueio (regra, obrigatório faltando) ou avisos quando permitido. */
+  motivo?: string;
+}
+
+/** Para cada outra fase do board: o card pode ir para lá agora? Mesma avaliação de moveCard, sem mover. */
+export function movimentosDoCard(input: { cardId: string; actor: Actor }, opts?: OpcoesOp) {
+  return executar(input.actor, opts, async (op): Promise<MovimentoPossivel[]> => {
+    const card = await lerCard(op, input.cardId);
+    const q = await carregarQuadro(op, card.boardId);
+    const alvo = { quadro: q, card: vistaDe(card), ligacoes: await lerLigacoes(op, [card.id]) };
+    const origem = card.phaseId ? q.fasePorId.get(card.phaseId) ?? null : null;
+    const saida: MovimentoPossivel[] = [];
+    for (const destino of q.fases) {
+      if (destino.id === card.phaseId) continue;
+      const r = await avaliarMovimento(op, alvo, origem, destino);
+      saida.push(r.ok ? { faseId: destino.id, permitido: true, ...(r.avisos?.length ? { motivo: r.avisos.join(" ") } : {}) } : { faseId: destino.id, permitido: false, motivo: r.motivo });
     }
     return saida;
   });
