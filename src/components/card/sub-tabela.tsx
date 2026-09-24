@@ -189,7 +189,7 @@ export function SubTabela({
             <NovoCard
               ws={ws}
               board={boardFilho.slug}
-              fase={faseNovo}
+              fase={lado === "destino" ? { ...faseNovo, campos: faseNovo.campos.filter((c) => c.id !== campo.id) } : faseNovo}
               aberto={modal}
               onOpenChange={setModal}
               pessoas={pessoas}

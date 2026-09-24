@@ -58,7 +58,7 @@ export async function PainelCard({ ws, board, cardId, voltarPara }: { ws: string
         return [
           ob.id,
           {
-            faseNovo: { id: f0?.id ?? null, nome: f0?.name ?? "", campos: camposDaFase(ob, ajustes, f0?.id ?? null) },
+            faseNovo: { id: f0?.id ?? null, nome: f0?.name ?? "", campos: camposDaFase(ob, ajustes, f0?.id ?? null), nomes: Object.fromEntries(ob.campos.map((c) => [c.id, c.name])) },
             obrigatorios: obrigatoriosPossiveis(ob, ajustes, f0?.id ?? null),
           },
         ] as const;
