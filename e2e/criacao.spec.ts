@@ -49,7 +49,6 @@ test("sub-tabela: sem cobertura dos obrigatórios, Adicionar abre o formulário 
   await page.waitForURL(/\/c\/[0-9a-f-]{36}$/);
 
   const painel = page.getByTestId("painel-card");
-  await painel.getByRole("tab", { name: /Relacionados/ }).click();
 
   // Parcelas: o formulário rápido cobre os obrigatórios, então continua inline
   await expect(painel.locator('[data-subtabela="Parcelas"]').getByLabel("Valor", { exact: true })).toBeVisible();

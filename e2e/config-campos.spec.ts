@@ -46,7 +46,7 @@ test("campos agrupados pela primeira fase: chips de fases, arrastar entre grupos
 
   // Desmarcar Elaboração: passa a começar em Vigente
   salvou = acaoConcluida(page);
-  await opcoes.getByLabel("Elaboração").uncheck();
+  await opcoes.getByLabel("Elaboração").click(); // a linha muda de grupo (remonta): click, não uncheck
   await salvou;
   await page.reload();
   await expect(cnpj("A partir de Vigente")).toBeVisible();

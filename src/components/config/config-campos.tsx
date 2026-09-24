@@ -156,7 +156,7 @@ export function ConfigCampos(ctx: ContextoCampos) {
           <CardTitle>Campos</CardTitle>
           {comFases && (
             <p className="mt-1 text-xs text-muted-foreground">
-              Cada campo é preenchido numa fase: fica oculto antes dela e somente leitura depois. Arraste entre os grupos para mudar.
+              Cada campo começa numa fase: fica oculto antes dela, editável nas fases marcadas e somente leitura nas outras. Arraste entre os grupos para mudar a primeira fase.
             </p>
           )}
         </div>

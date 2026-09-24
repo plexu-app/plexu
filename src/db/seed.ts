@@ -64,6 +64,13 @@ async function main() {
     await campo(ba.id, "valor", "Valor", "currency", 2, { currency: { code: "BRL" } });
     await tx.update(boards).set({ titleFieldId: aNumero }).where(eq(boards.id, ba.id));
 
+    // Fornecedores (base): escolhido no contrato por um seletor com busca (relação N:1).
+    const [bf] = await tx.insert(boards).values({ workspaceId: ws.id, slug: "fornecedores", name: "Fornecedores", kind: "database" }).returning();
+    await cfg(bf.id, "board", bf.id);
+    const fNome = await campo(bf.id, "nome", "Nome", "text", 0);
+    await campo(bf.id, "cnpj", "CNPJ", "cnpj", 1);
+    await tx.update(boards).set({ titleFieldId: fNome }).where(eq(boards.id, bf.id));
+
     // Contratos (fluxo)
     const [bc] = await tx.insert(boards).values({ workspaceId: ws.id, slug: "contratos", name: "Contratos", kind: "workflow" }).returning();
     await cfg(bc.id, "board", bc.id);
@@ -99,6 +106,7 @@ async function main() {
       relation: { target_board: ba.id, cardinality: "many", exclusive: true, inverse_name: "contrato" },
     });
     await garantirIndiceExclusivo(tx, cAditivos);
+    await campo(bc.id, "fornecedor", "Fornecedor", "relation", 12, { ...elab, relation: { target_board: bf.id, cardinality: "one", inverse_name: "contratos" } });
     await campo(bc.id, "exige_garantia", "Exige garantia", "boolean", 10, elab);
     await campo(
       bc.id,
@@ -124,7 +132,7 @@ async function main() {
       .returning();
     await cfg(bc.id, "rule", regra.id, { kind: "can_leave" });
 
-    return { actor, contratos: bc.id, parcelas: bp.id, cParcelas };
+    return { actor, contratos: bc.id, parcelas: bp.id, fornecedores: bf.id, cParcelas };
   });
 
   // Exemplo: um contrato com duas parcelas, uma medida (via core, como qualquer canal)
@@ -133,6 +141,11 @@ async function main() {
     props: { objeto: "Reforma da sede", contratante: "Construtora Beta", cnpj: "11.222.333/0001-81" },
     actor: ids.actor,
   });
+  for (const [nome, cnpj] of [
+    ["Construtora Beta", "11.222.333/0001-81"],
+    ["Engenharia Delta", "45.723.174/0001-10"],
+  ])
+    await createCard({ boardId: ids.fornecedores, props: { nome, cnpj }, actor: ids.actor });
   const p1 = await createCard({ boardId: ids.parcelas, props: { valor: 12000, vencimento: "2026-10-10" }, actor: ids.actor });
   const p2 = await createCard({ boardId: ids.parcelas, props: { valor: 8000, vencimento: "2026-11-10" }, actor: ids.actor });
   await updateFields({ cardId: contrato.id, props: { parcelas: [p1.id, p2.id] }, actor: ids.actor });

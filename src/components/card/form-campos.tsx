@@ -1,6 +1,9 @@
 "use client";
+// Formulário da fase atual. Campos de relação entram na posição deles (sub-tabela ou seletor, cada um
+// com seus próprios formulários); por isso os inputs ficam fora do <form> e se ligam a ele pelo
+// atributo HTML form, sem formulários aninhados.
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useId, useTransition } from "react";
 import { Calculator, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { salvarCamposAction } from "@/app/w/[ws]/actions";
@@ -22,35 +25,33 @@ export function FormCampos({
   cardId,
   campos,
   pessoas,
+  relacoes = {},
 }: {
   ws: string;
   board: string;
   cardId: string;
   campos: CampoForm[];
   pessoas: Record<string, string>;
+  /** Conteúdo de cada campo de relação (sub-tabela ou seletor), por field_id. */
+  relacoes?: Record<string, React.ReactNode>;
 }) {
   const router = useRouter();
+  const formId = `campos-${useId().replace(/:/g, "")}`;
   const [pendente, iniciar] = useTransition();
   const mapaPessoas = new Map(Object.entries(pessoas));
-  const editaveis = campos.filter((c) => c.estado?.editavel !== false && !c.estado?.calculado);
+  const editaveis = campos.filter((c) => c.campo.type !== "relation" && c.estado?.editavel !== false && !c.estado?.calculado);
 
   return (
-    <form
-      className="grid grid-cols-2 gap-x-6 gap-y-4"
-      action={(form) =>
-        iniciar(async () => {
-          const r = await salvarCamposAction(ws, board, cardId, form);
-          if (r.ok) {
-            toast.success("Campos salvos");
-            router.refresh();
-          } else toast.error("Não foi possível salvar", { description: r.motivo });
-        })
-      }
-    >
-      {editaveis.map((c) => (
-        <input key={c.campo.id} type="hidden" name="campos" value={c.campo.id} />
-      ))}
+    <div className="grid grid-cols-2 gap-x-6 gap-y-4">
       {campos.map(({ campo, valor, estado }) => {
+        if (campo.type === "relation") {
+          const conteudo = relacoes[campo.id];
+          return conteudo ? (
+            <div key={campo.id} className="col-span-2" data-campo={campo.name}>
+              {conteudo}
+            </div>
+          ) : null;
+        }
         const idInput = `campo-${campo.id}`;
         const calculado = !!estado?.calculado;
         const editavel = !calculado && estado?.editavel !== false;
@@ -75,7 +76,7 @@ export function FormCampos({
               {!calculado && !estado?.travado && !editavel && <Badge variant="outline">somente leitura</Badge>}
             </div>
             {editavel ? (
-              <CampoInput campo={campo} valor={valor} pessoas={pessoas} id={idInput} obrigatorio={estado?.obrigatorio} />
+              <CampoInput campo={campo} valor={valor} pessoas={pessoas} id={idInput} obrigatorio={estado?.obrigatorio} form={formId} />
             ) : (
               <div
                 id={idInput}
@@ -91,12 +92,27 @@ export function FormCampos({
         );
       })}
       {editaveis.length > 0 && (
-        <div className="col-span-2 flex justify-end">
+        <form
+          id={formId}
+          className="col-span-2 flex justify-end"
+          action={(form) =>
+            iniciar(async () => {
+              const r = await salvarCamposAction(ws, board, cardId, form);
+              if (r.ok) {
+                toast.success("Campos salvos");
+                router.refresh();
+              } else toast.error("Não foi possível salvar", { description: r.motivo });
+            })
+          }
+        >
+          {editaveis.map((c) => (
+            <input key={c.campo.id} type="hidden" name="campos" value={c.campo.id} />
+          ))}
           <Button type="submit" disabled={pendente}>
             {pendente ? "Salvando…" : "Salvar campos"}
           </Button>
-        </div>
+        </form>
       )}
-    </form>
+    </div>
   );
 }

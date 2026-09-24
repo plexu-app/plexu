@@ -45,6 +45,7 @@ export function SubTabela({
   obrigatorios,
   faseNovo,
   hoje,
+  editavel = true,
 }: {
   ws: string;
   board: string;
@@ -59,6 +60,8 @@ export function SubTabela({
   /** Formulário completo da fase inicial do board filho. */
   faseNovo: FaseNovoCard;
   hoje: string;
+  /** false: relação somente leitura nesta fase (sem adicionar, ligar ou desligar). */
+  editavel?: boolean;
 }) {
   const router = useRouter();
   const [pendente, iniciar] = useTransition();
@@ -132,6 +135,7 @@ export function SubTabela({
                   );
                 })}
                 <Td>
+                  {editavel && (
                   <Button
                     variant="ghost"
                     size="icon"
@@ -141,6 +145,7 @@ export function SubTabela({
                   >
                     <Unlink />
                   </Button>
+                  )}
                 </Td>
               </Tr>
             ))}
@@ -154,7 +159,7 @@ export function SubTabela({
           </TBody>
         </Table>
 
-        {rapido ? (
+        {!editavel ? null : rapido ? (
         <form
           ref={formNovo}
           className="flex flex-wrap items-end gap-2 border-t px-2 pt-3"
@@ -199,7 +204,7 @@ export function SubTabela({
             />
           </div>
         )}
-        {lado === "origem" && (
+        {editavel && lado === "origem" && (
           <div className="px-2 pb-2">
             <BuscaRelacao
               ws={ws}
