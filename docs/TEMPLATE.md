@@ -107,14 +107,14 @@ Fases (ordem, final, destinos permitidos), campos (tipo, obrigatório, editável
 | `attachment`, `cpf`, `cnpj` | iguais |
 | `id` | `sequence` `{n}` |
 | `statement` | ignorado (texto fixo do formulário) |
-| `connector` | `relation`; "1 card" → `cardinality: one` e `exclusive` (revisar: exclusiva impede o mesmo card do alvo em dois cards) |
+| `connector` | `relation`; "1 card" → `cardinality: one`. O conversor nunca marca `exclusive`: exclusividade só por opção explícita no template |
 | campo na fase X; "editável em outras fases"; obrigatório | `fill_phases: [X]`; `editable_everywhere`; `required: "true"` (vale para sair da fase) |
 | start form | campos da primeira fase |
 | fase "final" | `terminal` |
 | destinos permitidos restritos | regra `can_enter` com `fase_origem`/`fase_destino` |
 | conexão com "filho obrigatório para finalizar" | regra `can_enter` nas fases finais: `filhos(rel).contar() > 0` |
 | condicional de campo (mostrar/ocultar) | `visible` do campo alvo: mostrar quando = condição; ocultar quando = negação |
-| série de conexões numeradas para o mesmo alvo ("Item 01..12") | **uma** relação 1:N (`many`, `exclusive`) |
+| série de conexões numeradas para o mesmo alvo ("Item 01..12") | **uma** relação 1:N (`many`) |
 | série de campos numerados alinhada a ela ("Aprovar item 01..12") | um campo em cada card filho; se uma automação copiava cada membro para um campo do filho, esse campo é reaproveitado e a cópia deixa de existir |
 | automação `run_a_formula` `SUM(%{item_NN.valor}...)` sobre a série | `rollup` `sum` pela relação (várias automações 1/12…12/12 → 1 rollup) |
 | `run_a_formula` entre campos do mesmo card (`SUBTRACT`, `SUM`, …) | `dynamic_text` com a expressão |

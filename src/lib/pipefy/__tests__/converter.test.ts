@@ -68,6 +68,7 @@ const PEDIDOS: PfExport = {
       campo("cnpj", "3", "CNPJ", "cnpj"),
       campo("aviso", "4", "Leia antes", "statement"),
       campo("fornecedor", "5", "Fornecedor", "connector", { connectedRepo: { id: "3003", name: "Fornecedores" }, canConnectMultiples: false }),
+      campo("principal", "6", "Item principal", "connector", { connectedRepo: { id: "2002", name: "Itens do pedido" }, canConnectMultiples: false }),
     ],
     phases: [
       {
@@ -137,13 +138,15 @@ describe("converterPipefy", () => {
     expect(f("aviso")).toBeUndefined(); // statement
     expect(f("observacao")).toMatchObject({ type: "long_text", fill_phases: ["aprovacao"], editable_everywhere: true, visible: 'card.tipo == "Serviço"' });
     expect(p.title_field).toBe("titulo");
+    // Conexão de 1 card: cardinality one, nunca exclusiva (só por opção explícita no template)
+    expect(f("item_principal")?.relation).toEqual({ board: "itens-do-pedido", cardinality: "one" });
   });
 
   it("série de conexões numeradas vira relação 1:N; série de campos alinhada vira o campo do filho", () => {
     const p = board("pedidos-de-compra");
     expect(p.fields.find((f) => f.key === "items")).toMatchObject({
       type: "relation",
-      relation: { board: "itens-do-pedido", cardinality: "many", exclusive: true },
+      relation: { board: "itens-do-pedido", cardinality: "many" },
     });
     expect(p.fields.some((f) => /item_0|aprovar/.test(f.key))).toBe(false);
     // "Aprovar item NN" era copiado para itens.aprovado: nenhum campo novo no filho

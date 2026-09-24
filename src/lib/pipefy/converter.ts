@@ -377,7 +377,7 @@ class Conversor {
                 name: plural(s.nome),
                 type: "relation",
                 ...(faseKey ? { fill_phases: [faseKey] } : {}),
-                relation: { board: s.alvo.key, cardinality: "many", exclusive: true, inverse_name: slugCampo(b.tpl.name).slice(0, 40) },
+                relation: { board: s.alvo.key, cardinality: "many", inverse_name: slugCampo(b.tpl.name).slice(0, 40) },
               });
               b.rel.conexoes.push({ campo: `${s.nome} (${s.membros.length} campos numerados)`, alvo: s.alvo.tpl.name, destino: `relação 1:N ${s.relKey}` });
             } else {
@@ -440,11 +440,12 @@ class Conversor {
           continue;
         }
         const um = pf.canConnectMultiples === false;
-        c.relation = { board: alvo.key, cardinality: um ? "one" : "many", ...(um ? { exclusive: true } : {}) };
+        // Exclusividade nunca é inferida: só por opção explícita no template.
+        c.relation = { board: alvo.key, cardinality: um ? "one" : "many" };
         b.rel.conexoes.push({
           campo: pf.label,
           alvo: alvo.tpl.name,
-          destino: `relação ${um ? "1 card (exclusiva)" : "vários cards"} ${c.key}${um ? " — revisar: exclusiva impede o mesmo card do alvo em dois cards daqui" : ""}`,
+          destino: `relação ${um ? "1 card" : "vários cards"} ${c.key}`,
         });
       }
       cc.campo = c;
