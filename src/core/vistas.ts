@@ -65,9 +65,11 @@ export function estadoDosCampos(input: { cardId: string; actor: Actor }, opts?: 
       const aj = ajuste(q, c.id, card.phaseId);
       const calculado = TIPOS_SOMENTE_LEITURA.has(c.type);
       const travado = ligs.some((l) => travaCampo(l, c, card.id));
+      // Invariante: campo oculto nunca é exigido (mesma regra de verificarObrigatorios).
+      const visivel = aj?.visible ?? avaliar(c.visibleExpr, true);
       saida[c.id] = {
-        visivel: aj?.visible ?? avaliar(c.visibleExpr, true),
-        obrigatorio: !calculado && (aj?.required ?? avaliar(c.requiredExpr, false)),
+        visivel,
+        obrigatorio: visivel && !calculado && (aj?.required ?? avaliar(c.requiredExpr, false)),
         editavel: !calculado && aj?.editable !== false && !travado,
         calculado,
         travado,

@@ -14,7 +14,7 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, Dia
 import { Input, Label, NativeSelect, Textarea } from "@/components/ui/input";
 import { Badge, Card, CardContent, CardHeader, CardTitle, Table, TBody, Td, Th, THead, Tr } from "@/components/ui/misc";
 import { TIPOS_CAMPO } from "@/lib/config-campos";
-import { fasesDoCampo } from "@/lib/fases-preenchimento";
+import { fasesDoCampo, obrigatorioOculto } from "@/lib/fases-preenchimento";
 import { exprDoValorFixo, lerValorInicial, TIPOS_DATA, TIPOS_NUMERO, type ModoInicial } from "@/lib/valor-inicial";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +48,7 @@ export interface ContextoCampos {
 const rotuloTipo = new Map(TIPOS_CAMPO.map((t) => [t.tipo, t.rotulo]));
 const calculado = new Set(TIPOS_CAMPO.filter((t) => t.calculado).map((t) => t.tipo));
 const SEM_FASE = "__sem_fase";
+
 
 /** Fases de preenchimento válidas do campo, na ordem das fases do board. */
 function fasesNaLista(ctx: ContextoCampos, config: Record<string, unknown>): string[] {
@@ -131,6 +132,11 @@ export function ConfigCampos(ctx: ContextoCampos) {
         {[c.requiredExpr && (c.requiredExpr === "true" ? "obrigatório" : "obrigatório quando…"), c.visibleExpr && "aparece quando…", c.uniqueValue && "único"]
           .filter(Boolean)
           .join(" · ") || "—"}
+        {obrigatorioOculto(ctx.fases, ctx.ajustes, c).map((fase) => (
+          <span key={fase} className="mt-1 block font-medium text-warning-strong" data-aviso-campo={c.slug} role="note">
+            obrigatório mas oculto {fase === "todas as fases" ? "em todas as fases" : `na fase ${fase}`}
+          </span>
+        ))}
       </Td>
       <Td className="text-right">
         <Button variant="ghost" size="icon" aria-label={`Editar ${c.name}`} onClick={() => setEditando(c.id)}>
