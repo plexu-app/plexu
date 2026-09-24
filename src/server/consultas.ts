@@ -38,6 +38,15 @@ export interface FaseUI {
   name: string;
   position: number;
   isTerminal: boolean;
+  color: string | null;
+}
+
+/** Preferências de exibição guardadas em boards.settings. */
+export interface SettingsBoard {
+  /** Até 3 campos mostrados no cartão do kanban. */
+  kanban_fields?: string[];
+  /** Campo de data usado como prazo no cartão (além de cards.due_at). */
+  kanban_due_field?: string | null;
 }
 
 export interface BoardCompleto {
@@ -47,6 +56,7 @@ export interface BoardCompleto {
   name: string;
   kind: "workflow" | "database";
   titleFieldId: string | null;
+  settings: SettingsBoard;
   fases: FaseUI[];
   campos: CampoUI[];
 }
@@ -60,6 +70,8 @@ export interface CardResumo {
   props: Record<string, unknown>;
   computed: Record<string, unknown>;
   updatedAt: Date;
+  assignees: string[];
+  dueAt: Date | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -167,7 +179,8 @@ async function completar(b: typeof boards.$inferSelect): Promise<BoardCompleto> 
     name: b.name,
     kind: b.kind,
     titleFieldId: b.titleFieldId,
-    fases: ps.map((p) => ({ id: p.id, name: p.name, position: p.position, isTerminal: p.isTerminal })),
+    settings: (b.settings ?? {}) as SettingsBoard,
+    fases: ps.map((p) => ({ id: p.id, name: p.name, position: p.position, isTerminal: p.isTerminal, color: p.color })),
     campos: fs.map(campoUI),
   };
 }
@@ -201,6 +214,8 @@ const colunasResumo = {
   props: cards.props,
   computed: cards.computed,
   updatedAt: cards.updatedAt,
+  assignees: cards.assignees,
+  dueAt: cards.dueAt,
 };
 
 export async function cardsDoBoard(boardId: string, limite = 2000): Promise<CardResumo[]> {

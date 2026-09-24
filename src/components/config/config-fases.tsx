@@ -7,6 +7,8 @@ import { arquivarFaseAction, atualizarFaseAction, criarFaseAction, moverFaseActi
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/misc";
+import { corDaFase, PALETA_FASES } from "@/components/kanban-dados";
+import { cn } from "@/lib/utils";
 
 export function useAcaoConfig() {
   const router = useRouter();
@@ -23,7 +25,7 @@ export function useAcaoConfig() {
   return { pendente, executar };
 }
 
-export function ConfigFases({ ws, board, fases }: { ws: string; board: string; fases: { id: string; name: string; isTerminal: boolean }[] }) {
+export function ConfigFases({ ws, board, fases }: { ws: string; board: string; fases: { id: string; name: string; isTerminal: boolean; color: string | null }[] }) {
   const { pendente, executar } = useAcaoConfig();
   return (
     <Card>
@@ -44,6 +46,7 @@ export function ConfigFases({ ws, board, fases }: { ws: string; board: string; f
                   Renomear
                 </Button>
               </form>
+              <CoresFase atual={f.color} indice={i} nome={f.name} desabilitado={pendente} escolher={(cor) => executar(() => atualizarFaseAction(ws, board, f.id, { cor }))} />
               <label className="flex items-center gap-1.5 text-sm">
                 <input
                   type="checkbox"
@@ -83,5 +86,50 @@ export function ConfigFases({ ws, board, fases }: { ws: string; board: string; f
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+/** Paleta de cores da fase; "automática" usa a cor pela posição. */
+function CoresFase({
+  atual,
+  indice,
+  nome,
+  desabilitado,
+  escolher,
+}: {
+  atual: string | null;
+  indice: number;
+  nome: string;
+  desabilitado: boolean;
+  escolher: (cor: string | null) => void;
+}) {
+  const efetiva = corDaFase(atual, indice);
+  return (
+    <div className="flex items-center gap-1" role="radiogroup" aria-label={`Cor da fase ${nome}`}>
+      {PALETA_FASES.map((cor) => (
+        <button
+          key={cor}
+          type="button"
+          role="radio"
+          aria-checked={atual === cor}
+          aria-label={`Cor ${cor}`}
+          disabled={desabilitado}
+          onClick={() => escolher(cor)}
+          className={cn("size-4 rounded-full ring-offset-1", atual === cor && "ring-2 ring-foreground/60")}
+          style={{ backgroundColor: cor }}
+        />
+      ))}
+      <button
+        type="button"
+        role="radio"
+        aria-checked={atual === null}
+        disabled={desabilitado}
+        onClick={() => escolher(null)}
+        className={cn("ml-1 rounded px-1 text-xs text-muted-foreground hover:bg-muted", atual === null && "font-medium text-foreground")}
+        title={`Automática (${efetiva})`}
+      >
+        auto
+      </button>
+    </div>
   );
 }

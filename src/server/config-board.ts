@@ -62,14 +62,19 @@ async function faseDoBoard(tx: Tx, a: Alvo, faseId: string) {
   return f;
 }
 
-export async function atualizarFase(a: Alvo, faseId: string, dados: { nome?: string; terminal?: boolean }) {
+export async function atualizarFase(a: Alvo, faseId: string, dados: { nome?: string; terminal?: boolean; cor?: string | null }) {
   return db.transaction(async (tx) => {
     const f = await faseDoBoard(tx, a, faseId);
     const nome = dados.nome?.trim();
     if (dados.nome !== undefined && !nome) throw new ErroConfig("nome da fase obrigatório");
-    const novo = { name: nome ?? f.name, isTerminal: dados.terminal ?? f.isTerminal };
+    if (dados.cor && !/^#[0-9a-f]{6}$/i.test(dados.cor)) throw new ErroConfig("cor inválida (use #rrggbb)");
+    const novo = {
+      name: nome ?? f.name,
+      isTerminal: dados.terminal ?? f.isTerminal,
+      color: dados.cor === undefined ? f.color : dados.cor || null,
+    };
     await tx.update(phases).set(novo).where(eq(phases.id, f.id));
-    await registrar(tx, a, "phase", "updated", f.id, { antes: { name: f.name, is_terminal: f.isTerminal }, depois: novo });
+    await registrar(tx, a, "phase", "updated", f.id, { antes: { name: f.name, is_terminal: f.isTerminal, color: f.color }, depois: novo });
   });
 }
 
@@ -370,4 +375,28 @@ export async function dadosConfiguracao(wsId: string, boardId: string) {
       ),
   ]);
   return { regras, ajustes, boards: bs, relacoesEntrando: relsParaCa };
+}
+
+// ---------------------------------------------------------------------------
+// Exibição do board (boards.settings)
+// ---------------------------------------------------------------------------
+
+/** Campos do cartão do kanban (até 3) e campo de prazo. Mescla em boards.settings. */
+export async function definirExibicaoKanban(a: Alvo, dados: { campos: string[]; prazo: string | null }) {
+  return db.transaction(async (tx) => {
+    const b = await exigirBoardDoWs(tx, a);
+    const campos = [...new Set(dados.campos)].slice(0, 3);
+    const doBoard = await tx.select({ id: fields.id, type: fields.type }).from(fields).where(and(eq(fields.boardId, a.boardId), isNull(fields.archivedAt)));
+    for (const id of campos) if (!doBoard.some((f) => f.id === id)) throw new ErroConfig("campo do cartão não pertence ao board");
+    if (dados.prazo && !doBoard.some((f) => f.id === dados.prazo && (f.type === "date" || f.type === "datetime"))) {
+      throw new ErroConfig("o prazo precisa ser um campo de data deste board");
+    }
+    const antes = (b.settings ?? {}) as Record<string, unknown>;
+    const settings = { ...antes, kanban_fields: campos, kanban_due_field: dados.prazo || null };
+    await tx.update(boards).set({ settings, updatedAt: new Date() }).where(eq(boards.id, a.boardId));
+    await registrar(tx, a, "board", "updated", a.boardId, {
+      antes: { kanban_fields: antes.kanban_fields ?? null, kanban_due_field: antes.kanban_due_field ?? null },
+      depois: { kanban_fields: campos, kanban_due_field: settings.kanban_due_field },
+    });
+  });
 }

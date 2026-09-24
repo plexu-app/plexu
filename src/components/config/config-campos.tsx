@@ -2,12 +2,16 @@
 import { useState } from "react";
 import { Archive, Calculator, Pencil, Plus } from "lucide-react";
 import { ajustarFaseAction, arquivarCampoAction, salvarCampoAction } from "@/app/w/[ws]/b/[board]/settings/actions";
+import { CampoInput } from "@/components/card/campo-input";
+import { ConstrutorCondicoes, type CampoCondicao } from "@/components/condicoes/construtor";
 import { EditorCel } from "@/components/config/editor-cel";
 import { useAcaoConfig } from "@/components/config/config-fases";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input, Label, NativeSelect, Textarea } from "@/components/ui/input";
 import { Badge, Card, CardContent, CardHeader, CardTitle, Table, TBody, Td, Th, THead, Tr } from "@/components/ui/misc";
 import { TIPOS_CAMPO } from "@/lib/config-campos";
+import { cn } from "@/lib/utils";
 
 export interface CampoConfig {
   id: string;
@@ -32,6 +36,8 @@ export interface ContextoCampos {
   /** relações que um rollup pode agregar: do board ou de outros boards apontando para ele */
   relacoesVia: { id: string; rotulo: string }[];
   campos: CampoConfig[];
+  /** campos disponíveis no construtor de condições */
+  condicoes: CampoCondicao[];
 }
 
 const rotuloTipo = new Map(TIPOS_CAMPO.map((t) => [t.tipo, t.rotulo]));
@@ -40,82 +46,124 @@ const calculado = new Set(TIPOS_CAMPO.filter((t) => t.calculado).map((t) => t.ti
 export function ConfigCampos(ctx: ContextoCampos) {
   const [editando, setEditando] = useState<string | null>(null);
   const { pendente, executar } = useAcaoConfig();
+  const campoEditado = editando && editando !== "novo" ? ctx.campos.find((c) => c.id === editando) ?? null : null;
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between">
         <CardTitle>Campos</CardTitle>
-        <Button size="sm" variant="outline" onClick={() => setEditando(editando === "novo" ? null : "novo")}>
+        <Button size="sm" onClick={() => setEditando("novo")}>
           <Plus /> Novo campo
         </Button>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3 p-2">
-        {editando === "novo" && <EditorCampo ctx={ctx} campo={null} fechar={() => setEditando(null)} />}
+      <CardContent className="p-2">
         <Table>
           <THead>
             <Tr>
               <Th>Nome</Th>
               <Th>Slug</Th>
               <Th>Tipo</Th>
+              <Th>Regras do campo</Th>
               <Th className="w-24" />
             </Tr>
           </THead>
           <TBody>
             {ctx.campos.map((c) => (
-              <FragmentoCampo key={c.id}>
-                <Tr data-config-campo={c.slug}>
-                  <Td className="font-medium">
-                    {c.name}
-                    {ctx.titleFieldId === c.id && (
-                      <Badge variant="secondary" className="ml-2">
-                        título
-                      </Badge>
-                    )}
-                  </Td>
-                  <Td className="font-mono text-xs">{c.slug}</Td>
-                  <Td>
-                    <span className="inline-flex items-center gap-1">
-                      {rotuloTipo.get(c.type) ?? c.type}
-                      {calculado.has(c.type) && <Calculator className="size-3 text-primary" aria-label="calculado" />}
-                    </span>
-                  </Td>
-                  <Td className="text-right">
-                    <Button variant="ghost" size="icon" aria-label={`Editar ${c.name}`} onClick={() => setEditando(editando === c.id ? null : c.id)}>
-                      <Pencil />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Arquivar ${c.name}`}
-                      disabled={pendente}
-                      onClick={() => executar(() => arquivarCampoAction(ctx.ws, ctx.board, c.id), "Campo arquivado")}
-                    >
-                      <Archive />
-                    </Button>
-                  </Td>
-                </Tr>
-                {editando === c.id && (
-                  <Tr>
-                    <Td colSpan={4} className="bg-muted/40">
-                      <EditorCampo ctx={ctx} campo={c} fechar={() => setEditando(null)} />
-                      {ctx.fases.length > 0 && <MatrizFases ctx={ctx} campo={c} />}
-                    </Td>
-                  </Tr>
-                )}
-              </FragmentoCampo>
+              <Tr key={c.id} data-config-campo={c.slug}>
+                <Td className="font-medium">
+                  {c.name}
+                  {ctx.titleFieldId === c.id && (
+                    <Badge variant="secondary" className="ml-2">
+                      título
+                    </Badge>
+                  )}
+                </Td>
+                <Td className="font-mono text-xs">{c.slug}</Td>
+                <Td>
+                  <span className="inline-flex items-center gap-1">
+                    {rotuloTipo.get(c.type) ?? c.type}
+                    {calculado.has(c.type) && <Calculator className="size-3 text-primary" aria-label="calculado" />}
+                  </span>
+                </Td>
+                <Td className="text-xs text-muted-foreground">
+                  {[c.requiredExpr && (c.requiredExpr === "true" ? "obrigatório" : "obrigatório se…"), c.visibleExpr && "visível se…", c.uniqueValue && "único"]
+                    .filter(Boolean)
+                    .join(" · ") || "—"}
+                </Td>
+                <Td className="text-right">
+                  <Button variant="ghost" size="icon" aria-label={`Editar ${c.name}`} onClick={() => setEditando(c.id)}>
+                    <Pencil />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Arquivar ${c.name}`}
+                    disabled={pendente}
+                    onClick={() => executar(() => arquivarCampoAction(ctx.ws, ctx.board, c.id), "Campo arquivado")}
+                  >
+                    <Archive />
+                  </Button>
+                </Td>
+              </Tr>
             ))}
           </TBody>
         </Table>
       </CardContent>
+      <Dialog open={editando !== null} onOpenChange={(v) => !v && setEditando(null)}>
+        <DialogContent className="max-w-5xl">
+          {editando !== null && <EditorCampo key={editando} ctx={ctx} campo={campoEditado} fechar={() => setEditando(null)} />}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
 
-function FragmentoCampo({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
-}
-
 type Config = Record<string, unknown>;
 const sub = (c: Config, k: string) => ((c[k] ?? {}) as Config);
+
+/** Sim/não/condicional (decisão 11): sim/não viram expressão constante; condicional usa o construtor. */
+function RegraDoCampo({
+  rotulo,
+  valor,
+  onChange,
+  opcoes,
+  campos,
+}: {
+  rotulo: string;
+  valor: string;
+  onChange: (v: string) => void;
+  opcoes: { rotulo: string; expr: string }[];
+  campos: CampoCondicao[];
+}) {
+  const fixa = opcoes.find((o) => o.expr === valor.trim());
+  const [condicional, setCondicional] = useState(!fixa);
+  return (
+    <div className="flex flex-col gap-2">
+      <Label>{rotulo}</Label>
+      <div className="flex gap-1" role="radiogroup" aria-label={rotulo}>
+        {[...opcoes.map((o) => ({ ...o, cond: false })), { rotulo: "condicional", expr: "", cond: true }].map((o) => {
+          const ativo = o.cond ? condicional : !condicional && valor.trim() === o.expr;
+          return (
+            <button
+              key={o.rotulo}
+              type="button"
+              role="radio"
+              aria-checked={ativo}
+              onClick={() => {
+                setCondicional(o.cond);
+                if (!o.cond) onChange(o.expr);
+                else if (fixa) onChange("");
+              }}
+              className={cn("rounded-md border px-2.5 py-1 text-xs", ativo ? "border-primary bg-primary/10 font-medium text-primary" : "hover:bg-muted")}
+            >
+              {o.rotulo}
+            </button>
+          );
+        })}
+      </div>
+      {condicional && <ConstrutorCondicoes rotulo={`${rotulo} — condição`} valor={valor} onChange={onChange} campos={campos} />}
+    </div>
+  );
+}
 
 function EditorCampo({ ctx, campo, fechar }: { ctx: ContextoCampos; campo: CampoConfig | null; fechar: () => void }) {
   const { pendente, executar } = useAcaoConfig();
@@ -131,10 +179,11 @@ function EditorCampo({ ctx, campo, fechar }: { ctx: ContextoCampos; campo: Campo
   const [titulo, setTitulo] = useState(ctx.titleFieldId !== null && ctx.titleFieldId === campo?.id);
   const set = (k: string, v: Config) => setConfig((c) => ({ ...c, [k]: v }));
   const proprias = ctx.campos.filter((c) => c.type === "relation" && c.id !== campo?.id);
+  const condicoes = ctx.condicoes.filter((c) => c.caminho !== `card.${campo?.slug}`);
 
   return (
     <form
-      className="grid grid-cols-2 gap-3 p-2"
+      className="flex min-h-0 flex-col"
       aria-label={campo ? `Editar campo ${campo.name}` : "Novo campo"}
       action={() =>
         executar(
@@ -156,66 +205,114 @@ function EditorCampo({ ctx, campo, fechar }: { ctx: ContextoCampos; campo: Campo
         )
       }
     >
-      <div className="flex flex-col gap-1.5">
-        <Label>Nome</Label>
-        <Input aria-label="Nome do campo" value={nome} onChange={(e) => setNome(e.target.value)} required />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label>Slug (usado nas expressões)</Label>
-        <Input aria-label="Slug do campo" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="gerado a partir do nome" className="font-mono" />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label>Tipo</Label>
-        <NativeSelect aria-label="Tipo do campo" value={tipo} onChange={(e) => setTipo(e.target.value)}>
-          {TIPOS_CAMPO.map((t) => (
-            <option key={t.tipo} value={t.tipo}>
-              {t.rotulo}
-            </option>
-          ))}
-        </NativeSelect>
-      </div>
-      <div className="flex items-end gap-4 pb-2 text-sm">
-        <label className="flex items-center gap-1.5">
-          <input type="checkbox" className="size-4" checked={titulo} onChange={(e) => setTitulo(e.target.checked)} /> usar como título
-        </label>
-        <label className="flex items-center gap-1.5">
-          <input type="checkbox" className="size-4" checked={unico} onChange={(e) => setUnico(e.target.checked)} /> valor único
-        </label>
-      </div>
-
-      <div className="col-span-2 rounded-md border bg-background p-3">
-        <ConfigPorTipo tipo={tipo} config={config} set={set} ctx={ctx} proprias={proprias} />
-      </div>
-
-      {!calculado.has(tipo) && (
-        <>
-          <div className="flex flex-col gap-1.5">
-            <Label>Obrigatório se (CEL; vazio = nunca)</Label>
-            <EditorCel rotulo="Obrigatório se" valor={requiredExpr} onChange={setRequired} placeholder='fase == "Elaboração"' />
+      <DialogHeader>
+        <DialogTitle>{campo ? `Editar campo: ${campo.name}` : "Novo campo"}</DialogTitle>
+        <DialogDescription>O slug identifica o campo nas expressões (card.{slug || "slug"}).</DialogDescription>
+      </DialogHeader>
+      <DialogBody className="grid grid-cols-[minmax(0,1fr)_280px] gap-6">
+        <div className="flex min-w-0 flex-col gap-4">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="campo-nome">Nome</Label>
+              <Input id="campo-nome" aria-label="Nome do campo" value={nome} onChange={(e) => setNome(e.target.value)} required />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="campo-slug">Slug</Label>
+              <Input id="campo-slug" aria-label="Slug do campo" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="gerado do nome" className="font-mono" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="campo-tipo">Tipo</Label>
+              <NativeSelect id="campo-tipo" aria-label="Tipo do campo" value={tipo} onChange={(e) => setTipo(e.target.value)}>
+                {TIPOS_CAMPO.map((t) => (
+                  <option key={t.tipo} value={t.tipo}>
+                    {t.rotulo}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Visível se (CEL; vazio = sempre)</Label>
-            <EditorCel rotulo="Visível se" valor={visibleExpr} onChange={setVisible} placeholder='card.tipo == "servico"' />
+          <div className="flex gap-5 text-sm">
+            <label className="flex items-center gap-1.5">
+              <input type="checkbox" className="size-4" checked={titulo} onChange={(e) => setTitulo(e.target.checked)} /> usar como título do card
+            </label>
+            <label className="flex items-center gap-1.5">
+              <input type="checkbox" className="size-4" checked={unico} onChange={(e) => setUnico(e.target.checked)} /> valor único no board
+            </label>
           </div>
+          <section className="rounded-md border p-3">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Opções de {rotuloTipo.get(tipo) ?? tipo}</h3>
+            <ConfigPorTipo tipo={tipo} config={config} set={set} ctx={ctx} proprias={proprias} />
+          </section>
+          {!calculado.has(tipo) && (
+            <>
+              <RegraDoCampo
+                rotulo="Obrigatório"
+                valor={requiredExpr}
+                onChange={setRequired}
+                opcoes={[
+                  { rotulo: "não", expr: "" },
+                  { rotulo: "sim", expr: "true" },
+                ]}
+                campos={condicoes}
+              />
+              <RegraDoCampo rotulo="Visível" valor={visibleExpr} onChange={setVisible} opcoes={[{ rotulo: "sempre", expr: "" }]} campos={condicoes} />
+              <div className="flex flex-col gap-1.5">
+                <Label>Valor padrão na criação (CEL, opcional)</Label>
+                <EditorCel rotulo="Valor padrão" valor={defaultExpr} onChange={setDefault} placeholder='hoje()  ou  "servico"' />
+              </div>
+            </>
+          )}
           <div className="flex flex-col gap-1.5">
-            <Label>Valor padrão na criação (CEL)</Label>
-            <EditorCel rotulo="Valor padrão" valor={defaultExpr} onChange={setDefault} placeholder="hoje()" />
+            <Label htmlFor="campo-ajuda">Ajuda (aparece abaixo do campo)</Label>
+            <Input id="campo-ajuda" aria-label="Texto de ajuda" value={ajuda} onChange={(e) => setAjuda(e.target.value)} />
           </div>
-        </>
-      )}
-      <div className="flex flex-col gap-1.5">
-        <Label>Ajuda</Label>
-        <Input aria-label="Texto de ajuda" value={ajuda} onChange={(e) => setAjuda(e.target.value)} />
-      </div>
-      <div className="col-span-2 flex justify-end gap-2">
+          {campo && ctx.fases.length > 0 && <MatrizFases ctx={ctx} campo={campo} />}
+        </div>
+        <PreviaCampo nome={nome} tipo={tipo} config={config} ajuda={ajuda} obrigatorio={requiredExpr.trim() === "true"} condicional={!!requiredExpr.trim() && requiredExpr.trim() !== "true"} />
+      </DialogBody>
+      <DialogFooter>
         <Button type="button" variant="ghost" onClick={fechar}>
           Cancelar
         </Button>
         <Button type="submit" disabled={pendente}>
           Salvar campo
         </Button>
-      </div>
+      </DialogFooter>
     </form>
+  );
+}
+
+/** Como o campo aparece no card, com as opções atuais do formulário. */
+function PreviaCampo({ nome, tipo, config, ajuda, obrigatorio, condicional }: { nome: string; tipo: string; config: Config; ajuda: string; obrigatorio: boolean; condicional: boolean }) {
+  const ehCalculado = calculado.has(tipo);
+  return (
+    <aside className="flex flex-col gap-2 self-start rounded-md border bg-muted/40 p-3" aria-label="Prévia do campo" data-testid="previa-campo">
+      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Prévia</span>
+      <div className="flex items-center gap-2">
+        <Label>
+          {nome || "Nome do campo"}
+          {obrigatorio && <span className="ml-0.5 text-destructive">*</span>}
+        </Label>
+        {ehCalculado && (
+          <Badge variant="calculado">
+            <Calculator className="size-3" /> calculado
+          </Badge>
+        )}
+        {condicional && <Badge variant="outline">obrigatório se…</Badge>}
+      </div>
+      {ehCalculado ? (
+        <div className="min-h-9 rounded-md border border-dashed border-primary/30 bg-primary/5 px-3 py-2 text-sm text-muted-foreground">
+          {tipo === "sequence" ? String(sub(config, "sequence").pattern ?? "{n}") : tipo === "dynamic_text" ? String(sub(config, "dynamic_text").template ?? "") : "valor calculado"}
+        </div>
+      ) : tipo === "relation" ? (
+        <div className="min-h-9 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">Buscar card por título ou id…</div>
+      ) : tipo === "attachment" ? (
+        <div className="min-h-9 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">Anexos</div>
+      ) : (
+        <CampoInput key={`${tipo}:${JSON.stringify(config)}`} campo={{ id: "previa", name: nome || "Campo", type: tipo, config }} valor={null} pessoas={{ exemplo: "Pessoa exemplo" }} />
+      )}
+      {ajuda && <p className="text-xs text-muted-foreground">{ajuda}</p>}
+    </aside>
   );
 }
 

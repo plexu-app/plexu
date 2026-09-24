@@ -5,11 +5,11 @@ import { cn } from "@/lib/utils";
 const badgeVariants = cva("inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium", {
   variants: {
     variant: {
-      default: "border-transparent bg-primary/10 text-primary",
+      default: "border-transparent bg-primary/10 text-primary-strong",
       secondary: "border-transparent bg-secondary text-secondary-foreground",
       outline: "text-muted-foreground",
-      destructive: "border-transparent bg-destructive/10 text-destructive",
-      calculado: "border-dashed border-primary/40 bg-primary/5 text-primary",
+      destructive: "border-transparent bg-destructive/10 text-destructive-strong",
+      calculado: "border-dashed border-primary/40 bg-primary/5 text-primary-strong",
     },
   },
   defaultVariants: { variant: "default" },
@@ -44,8 +44,8 @@ export function Table({ className, ...props }: React.ComponentProps<"table">) {
 }
 export const THead = ({ className, ...p }: React.ComponentProps<"thead">) => <thead className={cn("[&_tr]:border-b", className)} {...p} />;
 export const TBody = ({ className, ...p }: React.ComponentProps<"tbody">) => <tbody className={cn("[&_tr:last-child]:border-0", className)} {...p} />;
-export const Tr = ({ className, ...p }: React.ComponentProps<"tr">) => <tr className={cn("border-b hover:bg-muted/50", className)} {...p} />;
+export const Tr = ({ className, ...p }: React.ComponentProps<"tr">) => <tr className={cn("h-9 border-b hover:bg-muted/50", className)} {...p} />;
 export const Th = ({ className, ...p }: React.ComponentProps<"th">) => (
   <th className={cn("h-9 px-2 text-left align-middle text-xs font-medium text-muted-foreground", className)} {...p} />
 );
-export const Td = ({ className, ...p }: React.ComponentProps<"td">) => <td className={cn("px-2 py-1.5 align-middle", className)} {...p} />;
+export const Td = ({ className, ...p }: React.ComponentProps<"td">) => <td className={cn("px-2 py-0 align-middle", className)} {...p} />;

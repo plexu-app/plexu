@@ -14,6 +14,7 @@ import {
   criarCampo,
   criarFase,
   criarRegra,
+  definirExibicaoKanban,
   editarCampo,
   editarRegra,
   moverFase,
@@ -42,7 +43,7 @@ async function comBoard(ws: string, board: string, fn: (a: { wsId: string; board
 export async function criarFaseAction(ws: string, board: string, nome: string) {
   return comBoard(ws, board, (a) => criarFase(a, nome));
 }
-export async function atualizarFaseAction(ws: string, board: string, faseId: string, dados: { nome?: string; terminal?: boolean }) {
+export async function atualizarFaseAction(ws: string, board: string, faseId: string, dados: { nome?: string; terminal?: boolean; cor?: string | null }) {
   return comBoard(ws, board, (a) => atualizarFase(a, faseId, dados));
 }
 export async function moverFaseAction(ws: string, board: string, faseId: string, direcao: -1 | 1) {
@@ -73,4 +74,8 @@ export async function salvarRegraAction(ws: string, board: string, ruleId: strin
 }
 export async function ativarRegraAction(ws: string, board: string, ruleId: string, enabled: boolean) {
   return comBoard(ws, board, (a) => ativarRegra(a, ruleId, enabled));
+}
+
+export async function exibicaoKanbanAction(ws: string, board: string, dados: { campos: string[]; prazo: string | null }) {
+  return comBoard(ws, board, (a) => definirExibicaoKanban(a, dados));
 }

@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import {
   createColumnHelper,
   createSortedRowModel,
@@ -10,10 +10,7 @@ import {
   tableFeatures,
   useTable,
 } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown, Calculator, Plus, Search } from "lucide-react";
-import { toast } from "sonner";
-import { criarCardAction } from "@/app/w/[ws]/actions";
-import { Button } from "@/components/ui/button";
+import { ArrowDown, ArrowUp, ArrowUpDown, Calculator, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/misc";
 import { idCurto } from "@/lib/formatar";
@@ -28,7 +25,6 @@ const helper = createColumnHelper<typeof features, LinhaTabela>();
 
 export function TabelaBoard({ ws, board, colunas, linhas }: { ws: string; board: string; colunas: ColunaTabela[]; linhas: LinhaTabela[] }) {
   const [termo, setTermo] = useState("");
-  const [pendente, iniciar] = useTransition();
   const dados = useMemo(() => filtrarLinhas(linhas, termo), [linhas, termo]);
 
   const defs = useMemo(
@@ -40,7 +36,7 @@ export function TabelaBoard({ ws, board, colunas, linhas }: { ws: string; board:
           cell: (info) => {
             const l = info.row.original;
             return (
-              <Link href={`/w/${ws}/b/${board}/c/${l.id}`} className="font-medium hover:underline">
+              <Link href={`/w/${ws}/b/${board}/c/${l.id}?v=tabela`} scroll={false} className="font-medium hover:underline">
                 {l.titulo}
                 <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">{idCurto(l.id)}</span>
               </Link>
@@ -62,26 +58,13 @@ export function TabelaBoard({ ws, board, colunas, linhas }: { ws: string; board:
   const table = useTable({ features, columns: defs, data: dados });
 
   return (
-    <div className="flex flex-col gap-3 p-4">
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-3 px-6 py-4">
       <div className="flex items-center gap-2">
         <Search className="size-4 text-muted-foreground" />
         <Input className="max-w-sm" aria-label="Filtrar" placeholder="Filtrar por texto…" value={termo} onChange={(e) => setTermo(e.target.value)} />
         <span className="text-xs text-muted-foreground">
           {dados.length} de {linhas.length}
         </span>
-        <Button
-          size="sm"
-          className="ml-auto"
-          disabled={pendente}
-          onClick={() =>
-            iniciar(async () => {
-              const r = await criarCardAction(ws, board, null);
-              if (r && !r.ok) toast.error("Não foi possível criar", { description: r.motivo });
-            })
-          }
-        >
-          <Plus /> Novo card
-        </Button>
       </div>
       <Table>
         <THead>
@@ -91,7 +74,7 @@ export function TabelaBoard({ ws, board, colunas, linhas }: { ws: string; board:
                 const ordem = h.column.getIsSorted();
                 const col = colunas.find((c) => c.id === h.column.id);
                 return (
-                  <Th key={h.id} aria-sort={ordem === "asc" ? "ascending" : ordem === "desc" ? "descending" : "none"}>
+                  <Th key={h.id} className="whitespace-nowrap" aria-sort={ordem === "asc" ? "ascending" : ordem === "desc" ? "descending" : "none"}>
                     <button type="button" className="inline-flex items-center gap-1 hover:text-foreground" onClick={h.column.getToggleSortingHandler()}>
                       <table.FlexRender header={h} />
                       {col?.calculado && <Calculator className="size-3 text-primary" aria-label="calculado" />}
@@ -107,7 +90,7 @@ export function TabelaBoard({ ws, board, colunas, linhas }: { ws: string; board:
           {table.getRowModel().rows.map((r) => (
             <Tr key={r.id} data-linha={r.original.id}>
               {r.getAllCells().map((c) => (
-                <Td key={c.id}>
+                <Td key={c.id} className="max-w-72 truncate whitespace-nowrap">
                   <table.FlexRender cell={c} />
                 </Td>
               ))}
