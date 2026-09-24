@@ -62,7 +62,7 @@ export function TabelaBoard({ ws, board, colunas, linhas }: { ws: string; board:
   const table = useTable({ features, columns: defs, data: dados });
 
   return (
-    <div className="flex flex-col gap-3 p-4">
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-3 px-6 py-4">
       <div className="flex items-center gap-2">
         <Search className="size-4 text-muted-foreground" />
         <Input className="max-w-sm" aria-label="Filtrar" placeholder="Filtrar por texto…" value={termo} onChange={(e) => setTermo(e.target.value)} />

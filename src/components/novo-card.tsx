@@ -137,7 +137,7 @@ export function NovoCard({
                 );
               })}
               {erroGeral && (
-                <p role="alert" className="col-span-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <p role="alert" className="col-span-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive-strong">
                   {erroGeral}
                 </p>
               )}

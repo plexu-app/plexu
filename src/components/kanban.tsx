@@ -152,7 +152,7 @@ function CartaoVisual({ card, href, flutuando }: { card: CartaoKanban; href?: st
         <span className="font-mono text-xs text-muted-foreground">{idCurto(card.id)}</span>
         {card.prazo && (
           <span
-            className={cn("inline-flex items-center gap-1 rounded px-1 text-xs", card.prazo.atrasado ? "bg-destructive/10 font-medium text-destructive" : "text-muted-foreground")}
+            className={cn("inline-flex items-center gap-1 rounded px-1 text-xs", card.prazo.atrasado ? "bg-destructive/10 font-medium text-destructive-strong" : "text-muted-foreground")}
             title={card.prazo.atrasado ? "Prazo vencido" : "Prazo"}
           >
             <CalendarClock className="size-3" aria-hidden />
@@ -161,7 +161,7 @@ function CartaoVisual({ card, href, flutuando }: { card: CartaoKanban; href?: st
         )}
         {card.responsavel && (
           <span
-            className="ml-auto flex size-6 items-center justify-center rounded-full bg-primary/15 text-[11px] font-semibold text-primary"
+            className="ml-auto flex size-6 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary-strong"
             title={`Responsável: ${card.responsavel}`}
             aria-label={`Responsável: ${card.responsavel}`}
           >
