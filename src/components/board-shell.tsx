@@ -22,6 +22,7 @@ export function BoardShell({
   podeConfigurar,
   fases,
   pessoas,
+  hoje,
   children,
 }: {
   ws: string;
@@ -31,6 +32,7 @@ export function BoardShell({
   podeConfigurar: boolean;
   fases: FaseNovoCard[];
   pessoas: Record<string, string>;
+  hoje: string;
   children: React.ReactNode;
 }) {
   const atual = usePathname();
@@ -86,6 +88,7 @@ export function BoardShell({
         aberto={faseAberta !== null}
         onOpenChange={(v) => !v && setFaseAberta(null)}
         pessoas={pessoas}
+        hoje={hoje}
       />
     </CtxNovoCard.Provider>
   );

@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Plexu", description: "Board que nasc
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" suppressHydrationWarning>
       <body className="min-h-screen antialiased">
         {children}
         <Toaster richColors position="bottom-right" closeButton />

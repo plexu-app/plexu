@@ -221,7 +221,8 @@ async function avaliarRegras(op: Op, regras: RegraRow[], alvo: AlvoContexto, kin
  * Obrigatórios de todas as fases informadas. Por fase: field_phase_settings.required se definido;
  * senão required_expr avaliada com `fase` = aquela fase. Campo invisível na fase não é exigido nela.
  */
-export async function verificarObrigatorios(op: Op, alvo: AlvoContexto, fases: Fase[]): Promise<ResultadoRegra> {
+/** fases: null representa o board sem fases (expressões avaliadas com fase = null, sem ajuste por fase). */
+export async function verificarObrigatorios(op: Op, alvo: AlvoContexto, fases: (Fase | null)[]): Promise<ResultadoRegra> {
   const { quadro, card } = alvo;
   const campos = quadro.campos.filter((c) => !TIPOS_SOMENTE_LEITURA.has(c.type));
   const exprs: ExprCompilada[] = [];
@@ -247,8 +248,8 @@ export async function verificarObrigatorios(op: Op, alvo: AlvoContexto, fases: F
     const valor = c.type === "relation" ? ligacoes.filter((l) => l.campo.id === c.id && l.fromCardId === eu) : card.props[c.id];
     if (!vazio(valor)) continue;
     for (const f of fases) {
-      const aj = ajuste(quadro, c.id, f.id);
-      const ctxFase = { ...ctx, fase: f.name };
+      const aj = f ? ajuste(quadro, c.id, f.id) : undefined;
+      const ctxFase = { ...ctx, fase: f?.name ?? null };
       try {
         if (aj?.visible === false) continue;
         if (aj?.visible == null && c.visibleExpr && !compiladas.get(c.visibleExpr)!.evaluateBool(ctxFase)) continue;
@@ -272,17 +273,19 @@ export async function verificarObrigatorios(op: Op, alvo: AlvoContexto, fases: F
 const fasesAte = (q: Quadro, fase: Fase, inclusive: boolean) =>
   q.fases.filter((f) => (inclusive ? f.position <= fase.position : f.position < fase.position));
 
-/** can_create: regras can_create; criando fora da 1ª fase, também obrigatórios das anteriores e can_enter. */
+/**
+ * can_create: regras can_create; obrigatórios da fase inicial e de todas as anteriores (board sem
+ * fases: obrigatórios gerais); e can_enter da fase inicial. Vale para qualquer canal (UI, API, seed).
+ */
 export async function canCreate(op: Op, alvo: AlvoContexto & { faseId: string | null }): Promise<ResultadoRegra> {
   const { quadro, faseId } = alvo;
   const a = { ...alvo, fase: faseId, faseDestino: faseId };
   const r = await avaliarRegras(op, await lerRegras(op, quadro.id, "can_create", faseId), a, "can_create");
-  if (!r.ok || !faseId) return r;
-  const fase = quadro.fasePorId.get(faseId)!;
-  if (fase.id !== quadro.fases[0]?.id) {
-    const obrig = await verificarObrigatorios(op, a, fasesAte(quadro, fase, false));
-    if (!obrig.ok) return obrig;
-  }
+  if (!r.ok) return r;
+  const fase = faseId ? quadro.fasePorId.get(faseId)! : null;
+  const obrig = await verificarObrigatorios(op, a, fase ? fasesAte(quadro, fase, true) : [null]);
+  if (!obrig.ok) return obrig;
+  if (!faseId) return OK;
   return canEnter(op, { ...alvo, origem: null, destino: faseId });
 }
 

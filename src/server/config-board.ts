@@ -400,3 +400,13 @@ export async function definirExibicaoKanban(a: Alvo, dados: { campos: string[]; 
     });
   });
 }
+
+/** Ajustes por fase (field_phase_settings) dos campos de um board, para formulários de criação. */
+export async function ajustesDoBoard(boardId: string) {
+  const rs = await db
+    .select({ fieldId: fieldPhaseSettings.fieldId, phaseId: fieldPhaseSettings.phaseId, visible: fieldPhaseSettings.visible, editable: fieldPhaseSettings.editable, required: fieldPhaseSettings.required })
+    .from(fieldPhaseSettings)
+    .innerJoin(fields, eq(fields.id, fieldPhaseSettings.fieldId))
+    .where(eq(fields.boardId, boardId));
+  return rs.flatMap((a) => (a.fieldId && a.phaseId ? [{ ...a, fieldId: a.fieldId, phaseId: a.phaseId }] : []));
+}

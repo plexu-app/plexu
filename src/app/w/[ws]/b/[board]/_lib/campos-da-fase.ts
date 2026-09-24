@@ -1,18 +1,9 @@
-// Campos do formulário de criação por fase (card ainda não existe).
-// field_phase_settings vence; sem ajuste, visible_expr/required_expr avaliadas sobre um card vazio.
-// Expressões que dependem de relações ou dados do card não avaliam aqui: ficam visível=sim, obrigatório=não.
-import { compile } from "@/lib/expr";
-import type { BoardCompleto, CampoUI } from "@/server/consultas";
-
-export interface CampoCriacao {
-  id: string;
-  name: string;
-  slug: string;
-  type: string;
-  config: Record<string, unknown>;
-  helpText: string | null;
-  obrigatorio: boolean;
-}
+// Campos do formulário de criação de uma fase (card ainda não existe): definições com expressões e
+// ajuste da fase. Visibilidade e obrigatoriedade são avaliadas sobre os valores digitados
+// (src/lib/campos-criacao.ts), no navegador e de novo no servidor; o core é a palavra final.
+import type { CampoCriacaoDef } from "@/lib/campos-criacao";
+import { TIPOS_CALCULADOS_UI } from "@/lib/formatar";
+import type { BoardCompleto } from "@/server/consultas";
 
 export interface AjusteFase {
   fieldId: string;
@@ -22,7 +13,7 @@ export interface AjusteFase {
   required: boolean | null;
 }
 
-const EDITAVEIS_NA_CRIACAO = new Set([
+export const EDITAVEIS_NA_CRIACAO = new Set([
   "text",
   "long_text",
   "number",
@@ -37,24 +28,12 @@ const EDITAVEIS_NA_CRIACAO = new Set([
   "cnpj",
 ]);
 
-function avaliar(fonte: string | null, fase: string | null, hoje: string, padrao: boolean): boolean {
-  if (!fonte) return padrao;
-  try {
-    return compile(fonte).evaluateBool({ card: {}, fase, hoje });
-  } catch {
-    return padrao;
-  }
-}
-
-export function camposDaFase(board: BoardCompleto, ajustes: AjusteFase[], faseId: string | null, hoje: string): CampoCriacao[] {
-  const fase = faseId ? board.fases.find((f) => f.id === faseId)?.name ?? null : null;
+export function camposDaFase(board: Pick<BoardCompleto, "campos">, ajustes: AjusteFase[], faseId: string | null): CampoCriacaoDef[] {
   return board.campos
-    .filter((c: CampoUI) => EDITAVEIS_NA_CRIACAO.has(c.type))
+    .filter((c) => EDITAVEIS_NA_CRIACAO.has(c.type))
     .flatMap((c) => {
       const aj = faseId ? ajustes.find((a) => a.fieldId === c.id && a.phaseId === faseId) : undefined;
-      const visivel = aj?.visible ?? avaliar(c.visibleExpr, fase, hoje, true);
-      const editavel = aj?.editable !== false;
-      if (!visivel || !editavel) return [];
+      if (aj?.editable === false) return [];
       return [
         {
           id: c.id,
@@ -63,8 +42,28 @@ export function camposDaFase(board: BoardCompleto, ajustes: AjusteFase[], faseId
           type: c.type,
           config: c.config,
           helpText: c.helpText,
-          obrigatorio: aj?.required ?? avaliar(c.requiredExpr, fase, hoje, false),
+          visibleExpr: c.visibleExpr,
+          requiredExpr: c.requiredExpr,
+          ajuste: aj ? { visible: aj.visible, editable: aj.editable, required: aj.required } : null,
         },
       ];
     });
+}
+
+export const hojeSP = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+
+/**
+ * Campos que podem ser obrigatórios ao criar na fase (ajuste required=true, ou sem ajuste e com
+ * required_expr), inclusive relações. Condicionais contam: o formulário rápido não avalia expressões.
+ */
+export function obrigatoriosPossiveis(board: Pick<BoardCompleto, "campos">, ajustes: AjusteFase[], faseId: string | null): string[] {
+  return board.campos
+    .filter((c) => !TIPOS_CALCULADOS_UI.has(c.type))
+    .filter((c) => {
+      const aj = faseId ? ajustes.find((a) => a.fieldId === c.id && a.phaseId === faseId) : undefined;
+      if (aj?.visible === false) return false;
+      const expr = c.requiredExpr?.trim();
+      return aj?.required ?? (!!expr && expr !== "false");
+    })
+    .map((c) => c.id);
 }

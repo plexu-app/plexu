@@ -9,6 +9,8 @@ import { SubTabela } from "@/components/card/sub-tabela";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/misc";
 import { descreverEvento, formatarDataHora, idCurto, tituloOu, valorDoCard, type CampoFmt } from "@/lib/formatar";
 import { exigirBoard, exigirCard, exigirMembro } from "@/server/acesso";
+import { ajustesDoBoard } from "@/server/config-board";
+import { camposDaFase, hojeSP, obrigatoriosPossiveis } from "../_lib/campos-da-fase";
 import {
   boardPorId,
   comentariosDoCard,
@@ -38,6 +40,23 @@ export async function PainelCard({ ws, board, cardId, voltarPara }: { ws: string
     const ob = await boardPorId(ctx.ws.id, id);
     if (ob) outros.set(id, ob);
   }
+  // Criação de filhos: formulário completo da fase inicial de cada board relacionado e seus obrigatórios.
+  const criacao = new Map(
+    await Promise.all(
+      [...outros.values()].map(async (ob) => {
+        const ajustes = await ajustesDoBoard(ob.id);
+        const f0 = ob.fases[0] ?? null;
+        return [
+          ob.id,
+          {
+            faseNovo: { id: f0?.id ?? null, nome: f0?.name ?? "", campos: camposDaFase(ob, ajustes, f0?.id ?? null) },
+            obrigatorios: obrigatoriosPossiveis(ob, ajustes, f0?.id ?? null),
+          },
+        ] as const;
+      }),
+    ),
+  );
+  const hoje = hojeSP();
 
   const pessoas = Object.fromEntries(membros.map((m) => [m.id, m.nome]));
   const camposForm = b.campos
@@ -80,6 +99,8 @@ export async function PainelCard({ ws, board, cardId, voltarPara }: { ws: string
           boardFilho={{ id: ob.id, slug: ob.slug, name: ob.name, campos: ob.campos, titleFieldId: ob.titleFieldId }}
           linhas={r.cards}
           pessoas={pessoas}
+          {...criacao.get(ob.id)!}
+          hoje={hoje}
         />
       ) : (
         <SeletorRelacao
@@ -109,6 +130,8 @@ export async function PainelCard({ ws, board, cardId, voltarPara }: { ws: string
             boardFilho={{ id: ob.id, slug: ob.slug, name: ob.name, campos: ob.campos, titleFieldId: ob.titleFieldId }}
             linhas={r.cards}
             pessoas={pessoas}
+            {...criacao.get(ob.id)!}
+            hoje={hoje}
           />
         );
       }
