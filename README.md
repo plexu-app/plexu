@@ -37,9 +37,17 @@ Desenvolvimento:
 ```bash
 pnpm install
 docker compose up db -d   # expõe em localhost:5433
-pnpm db:migrate
+pnpm db:migrate           # cria o banco se faltar e aplica as migrações
 pnpm dev
 ```
+
+O mesmo Postgres guarda três bancos, cada um com um só uso. Testes nunca tocam no banco do demo.
+
+| Banco | Uso | Como preparar |
+|---|---|---|
+| `plexu` | demo e desenvolvimento (`pnpm dev`, `docker compose`) | `pnpm db:migrate && pnpm db:seed` |
+| `plexu_test` | testes do vitest (`pnpm test`) | automático: o setup global cria e migra (`TEST_DATABASE_URL` sobrescreve) |
+| `plexu_e2e` | Playwright (`pnpm e2e`) e testes manuais no navegador | `DATABASE_URL=postgres://plexu:plexu@localhost:5433/plexu_e2e pnpm db:migrate && pnpm db:seed` (`E2E_DATABASE_URL` sobrescreve o padrão do e2e) |
 
 Na primeira visita a `http://localhost:3000`, com o banco sem usuários, a tela **Primeiro acesso** cria o workspace e a conta owner. `APP_SECRET` (32+ caracteres; `openssl rand -hex 32`) assina o cookie de sessão. Em produção, ausente, curto ou com o valor de exemplo, o servidor recusa iniciar e diz por quê.
 
@@ -49,13 +57,13 @@ Dados de demonstração (caso de aceitação do MVP: Contratos → Parcelas, com
 pnpm db:seed              # idempotente; login demo@plexu.dev / plexu-demo-2026
 ```
 
-Checagens (obrigatórias antes de PR; os testes de integração usam o Postgres acima):
+Checagens (obrigatórias antes de PR; os testes de integração usam o banco `plexu_test`):
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm test
 ```
 
-E2E (Playwright; sobe o `next dev` sozinho e precisa do seed no banco de `DATABASE_URL`):
+E2E (Playwright; sobe o `next dev` sozinho, no banco `plexu_e2e` preparado com o seed):
 
 ```bash
 pnpm exec playwright install chromium   # uma vez

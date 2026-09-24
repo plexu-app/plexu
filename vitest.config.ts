@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { urlDeTeste } from "./src/test/banco";
 
 export default defineConfig({
   resolve: {
@@ -11,7 +12,10 @@ export default defineConfig({
   test: {
     include: ["src/**/*.test.ts"],
     environment: "node",
-    // Testes de integração do core usam Postgres real (DATABASE_URL); concorrência pede folga.
+    // Banco próprio dos testes (plexu_test), criado e migrado pelo setup global. Nunca o do demo nem o do e2e.
+    env: { DATABASE_URL: urlDeTeste() },
+    globalSetup: ["src/test/global-setup.ts"],
+    // Testes de integração do core usam Postgres real; concorrência pede folga.
     testTimeout: 30_000,
     hookTimeout: 30_000,
   },
