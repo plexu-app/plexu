@@ -14,8 +14,10 @@ import {
   criarCampo,
   criarFase,
   criarRegra,
+  definirExibicaoKanban,
   editarCampo,
   moverFase,
+  atualizarFase,
 } from "../config-board";
 
 type Alvo = { wsId: string; boardId: string; actor: { type: "user"; id: string } };
@@ -118,5 +120,28 @@ describe("regras", () => {
     const ev = await db.select({ data: events.data }).from(events).where(and(eq(events.boardId, alvo.boardId), eq(events.type, "config.changed")));
     const entidades = new Set(ev.map((e) => (e.data as { entidade: string }).entidade));
     expect([...entidades].sort()).toEqual(["board", "field", "field_phase_settings", "phase", "rule"]);
+  });
+});
+
+describe("exibição", () => {
+  it("cor da fase valida #rrggbb e pode ser limpa", async () => {
+    const [f] = await db.select().from(phases).where(eq(phases.boardId, alvo.boardId)).limit(1);
+    await atualizarFase(alvo, f.id, { cor: "#3B5BFF" });
+    let [x] = await db.select({ c: phases.color }).from(phases).where(eq(phases.id, f.id));
+    expect(x.c).toBe("#3B5BFF");
+    expect(await erro(atualizarFase(alvo, f.id, { cor: "azul" }))).toMatch(/cor/);
+    await atualizarFase(alvo, f.id, { cor: null });
+    [x] = await db.select({ c: phases.color }).from(phases).where(eq(phases.id, f.id));
+    expect(x.c).toBeNull();
+  });
+
+  it("campos do cartão (até 3, do board) e prazo só de data; mescla em settings", async () => {
+    const t = await criarCampo(alvo, { nome: "Nota", tipo: "text", config: {} });
+    const d = await criarCampo(alvo, { nome: "Prazo", tipo: "date", config: {} });
+    await definirExibicaoKanban(alvo, { campos: [t.id, t.id, d.id], prazo: d.id });
+    const [b] = await db.execute<{ settings: Record<string, unknown> }>(sql`select settings from boards where id = ${alvo.boardId}`);
+    expect(b.settings).toMatchObject({ kanban_fields: [t.id, d.id], kanban_due_field: d.id });
+    expect(await erro(definirExibicaoKanban(alvo, { campos: [], prazo: t.id }))).toMatch(/data/);
+    expect(await erro(definirExibicaoKanban(alvo, { campos: [parcelas.boardId], prazo: null }))).toMatch(/não pertence/);
   });
 });
