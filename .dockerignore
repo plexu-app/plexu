@@ -6,3 +6,4 @@ pgdata
 !README.md
 .env
 .env.*
+exports
