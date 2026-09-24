@@ -22,3 +22,5 @@ Leia `docs/` antes de qualquer mudança:
 - `pnpm typecheck`, `pnpm lint` e `pnpm test` verdes são obrigatórios antes de commitar. Os testes de integração precisam do Postgres: `docker compose up db -d` e `pnpm db:migrate`.
 - Commits pequenos, mensagens em português.
 - Toda mudança entra por PR para `main`, nunca por push direto.
+- **Testes manuais e e2e nunca usam o banco do demo do usuário (`plexu`).** Use sempre o banco `plexu_e2e` (mesmo Postgres, porta 5433): `DATABASE_URL=postgres://plexu:plexu@localhost:5433/plexu_e2e`, com `pnpm db:migrate` e `pnpm db:seed` nele; servidor de teste em outra porta (`E2E_PORT=3200 pnpm e2e`, ou `next dev -p 3100` com esse `DATABASE_URL`). Para zerar: `drop database plexu_e2e` e recriar.
+- **Não encerre o turno esperando CI.** Enquanto o CI roda, avance em outra tarefa (próximo item, revisão do diff) e consulte o status com `gh pr checks <n>` a cada tarefa concluída. Nada de loops `until`/`sleep` em segundo plano. Pare só quando o PR estiver mesclado ou houver uma decisão pendente do usuário.
