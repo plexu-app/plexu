@@ -30,7 +30,7 @@ export function NovoBoard({ ws, variante = "botao" }: { ws: string; variante?: "
         {variante === "bloco" ? (
           <button
             type="button"
-            className="flex h-full min-h-28 flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-sm text-muted-foreground hover:border-primary/50 hover:text-foreground"
+            className="flex h-full min-h-28 w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-sm text-muted-foreground hover:border-primary/50 hover:text-foreground"
           >
             <Plus className="size-5" /> Novo board
           </button>
