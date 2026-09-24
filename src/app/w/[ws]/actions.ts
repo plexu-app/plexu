@@ -7,7 +7,10 @@ import { addComment, CoreError, createCard, linkCards, moveCard, unlinkCards, up
 import { exigirBoard, exigirCard, exigirConfigurador, exigirMembro } from "@/server/acesso";
 import { criarFilho } from "@/server/cards";
 import { criarBoard, ErroConfig } from "@/server/config";
-import { boardPorId, buscarCards, cardDoWorkspace } from "@/server/consultas";
+import { dadosConfiguracao } from "@/server/config-board";
+import { boardPorId, buscarCards, cardDoWorkspace, type BoardCompleto } from "@/server/consultas";
+import { estadoCriacao, registroDoForm, valoresDoFormData } from "@/lib/campos-criacao";
+import { camposDaFase, hojeSP } from "./b/[board]/_lib/campos-da-fase";
 import { propsDoForm } from "@/lib/form-campos";
 import { TIPOS_CALCULADOS_UI } from "@/lib/formatar";
 
@@ -182,20 +185,25 @@ export async function comentarAction(ws: string, board: string, cardId: string, 
 export type ResultadoCriacao = { ok: true; id: string } | { ok: false; motivo: string; campos?: string[] };
 
 /**
- * Cria o card a partir do formulário da fase. Recusa formulário vazio.
- * Erros do core (regras, validação, unicidade) voltam com os campos envolvidos.
+ * Props da criação a partir do formulário da fase, revalidando no servidor o que o navegador avaliou:
+ * só entram campos editáveis e visíveis na fase com os valores enviados. Obrigatórios ficam com o core.
  */
-export async function criarCardComCamposAction(ws: string, board: string, phaseId: string | null, form: FormData): Promise<ResultadoCriacao> {
-  const ctx = await exigirMembro(ws);
-  const b = await exigirBoard(ctx, board);
-  const ids = new Set(form.getAll("campos").map(String));
-  const campos = b.campos.filter((c) => ids.has(c.id) && c.type !== "relation" && !TIPOS_CALCULADOS_UI.has(c.type));
-  const props = Object.fromEntries(
+async function propsDaCriacao(wsId: string, b: BoardCompleto, phaseId: string | null, form: FormData) {
+  const ajustes = (await dadosConfiguracao(wsId, b.id)).ajustes.flatMap((a) => (a.fieldId && a.phaseId ? [{ ...a, fieldId: a.fieldId, phaseId: a.phaseId }] : []));
+  const defs = camposDaFase(b, ajustes, phaseId);
+  const valores = valoresDoFormData(form);
+  const fase = phaseId ? b.fases.find((f) => f.id === phaseId)?.name ?? null : null;
+  const estados = estadoCriacao(defs, registroDoForm(defs, valores), fase, hojeSP());
+  const enviados = new Set(form.getAll("campos").map(String));
+  const campos = defs.filter((c) => enviados.has(c.id) && estados[c.id]?.visivel);
+  return Object.fromEntries(
     Object.entries(propsDoForm(form, campos)).filter(([, v]) => v !== null && v !== false && !(Array.isArray(v) && v.length === 0)),
   );
-  if (!Object.keys(props).length) return { ok: false, motivo: "Preencha ao menos um campo para criar o card." };
+}
+
+async function criarComTratamento(ws: string, board: string, fn: () => Promise<{ id: string }>): Promise<ResultadoCriacao> {
   try {
-    const card = await createCard({ boardId: b.id, phaseId, props, actor: ctx.actor });
+    const card = await fn();
     revalidatePath(caminhoBoard(ws, board), "layout");
     return { ok: true, id: card.id };
   } catch (e) {
@@ -204,4 +212,37 @@ export async function criarCardComCamposAction(ws: string, board: string, phaseI
     console.error(e);
     return { ok: false, motivo: "Erro inesperado. Tente novamente." };
   }
+}
+
+/** Cria o card pelo formulário da fase. Recusa formulário vazio; erros do core voltam com os campos. */
+export async function criarCardComCamposAction(ws: string, board: string, phaseId: string | null, form: FormData): Promise<ResultadoCriacao> {
+  const ctx = await exigirMembro(ws);
+  const b = await exigirBoard(ctx, board);
+  const props = await propsDaCriacao(ctx.ws.id, b, phaseId, form);
+  if (!Object.keys(props).length) return { ok: false, motivo: "Preencha ao menos um campo para criar o card." };
+  return criarComTratamento(ws, board, () => createCard({ boardId: b.id, phaseId, props, actor: ctx.actor }));
+}
+
+/**
+ * Cria um filho pelo formulário completo do board filho (fase inicial dele), já vinculado ao pai,
+ * numa transação. Usado quando o "Adicionar" rápido da sub-tabela não cobre os obrigatórios.
+ */
+export async function criarFilhoComCamposAction(
+  ws: string,
+  board: string,
+  cardId: string,
+  fieldId: string,
+  lado: "origem" | "destino",
+  boardFilhoId: string,
+  form: FormData,
+): Promise<ResultadoCriacao> {
+  const ctx = await exigirMembro(ws);
+  const b = await exigirBoard(ctx, board);
+  await exigirCard(b, cardId);
+  const bf = await boardPorId(ctx.ws.id, boardFilhoId);
+  const campo = (lado === "origem" ? b : bf)?.campos.find((x) => x.id === fieldId && x.type === "relation");
+  if (!bf || !campo || alvoDe(campo.config) !== (lado === "origem" ? bf.id : b.id)) return { ok: false, motivo: "Relação inválida." };
+  const props = await propsDaCriacao(ctx.ws.id, bf, bf.fases[0]?.id ?? null, form);
+  if (!Object.keys(props).length) return { ok: false, motivo: "Preencha ao menos um campo para criar o card." };
+  return criarComTratamento(ws, board, () => criarFilho({ actor: ctx.actor, paiId: cardId, campo, lado, boardFilhoId: bf.id, props }));
 }

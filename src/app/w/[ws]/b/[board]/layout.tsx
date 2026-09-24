@@ -3,7 +3,7 @@ import type { FaseNovoCard } from "@/components/novo-card";
 import { exigirBoard, exigirMembro, podeConfigurar } from "@/server/acesso";
 import { dadosConfiguracao } from "@/server/config-board";
 import { membrosDoWorkspace } from "@/server/consultas";
-import { camposDaFase } from "./_lib/campos-da-fase";
+import { camposDaFase, hojeSP } from "./_lib/campos-da-fase";
 
 export default async function LayoutBoard({
   children,
@@ -17,11 +17,10 @@ export default async function LayoutBoard({
   const b = await exigirBoard(ctx, board);
   const [config, membros] = await Promise.all([dadosConfiguracao(ctx.ws.id, b.id), membrosDoWorkspace(ctx.ws.id)]);
   const ajustes = config.ajustes.flatMap((a) => (a.fieldId && a.phaseId ? [{ ...a, fieldId: a.fieldId, phaseId: a.phaseId }] : []));
-  const hoje = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
   const fases: FaseNovoCard[] = (b.fases.length ? b.fases : [{ id: null as string | null, name: "" }]).map((f) => ({
     id: f.id,
     nome: f.name,
-    campos: camposDaFase(b, ajustes, f.id, hoje),
+    campos: camposDaFase(b, ajustes, f.id),
   }));
   return (
     <BoardShell
@@ -31,6 +30,7 @@ export default async function LayoutBoard({
       kind={b.kind}
       podeConfigurar={podeConfigurar(ctx)}
       fases={fases}
+      hoje={hojeSP()}
       pessoas={Object.fromEntries(membros.map((m) => [m.id, m.nome]))}
     >
       {children}

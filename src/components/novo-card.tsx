@@ -1,37 +1,27 @@
 "use client";
-// Criar card = formulário da fase: campos visíveis/editáveis na fase, obrigatórios marcados,
-// validação no navegador e erro do core mostrado no modal. Nunca cria card vazio.
+// Criar card = formulário da fase. Só campos visíveis na fase; visible_expr e required_expr
+// avaliados ao vivo conforme o usuário preenche (mesmo motor do servidor). O servidor revalida e o
+// core recusa obrigatório vazio. Nunca cria card vazio.
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { criarCardComCamposAction } from "@/app/w/[ws]/actions";
+import { useMemo, useState, useTransition } from "react";
+import { criarCardComCamposAction, type ResultadoCriacao } from "@/app/w/[ws]/actions";
 import { CampoInput } from "@/components/card/campo-input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/input";
-import { nomeInput } from "@/lib/form-campos";
+import { estadoCriacao, registroDoForm, valoresDoFormData, type CampoCriacaoDef } from "@/lib/campos-criacao";
 import { cn } from "@/lib/utils";
-
-export interface CampoNovoCard {
-  id: string;
-  name: string;
-  type: string;
-  config: Record<string, unknown>;
-  helpText: string | null;
-  obrigatorio: boolean;
-}
 
 export interface FaseNovoCard {
   id: string | null;
   nome: string;
-  campos: CampoNovoCard[];
+  campos: CampoCriacaoDef[];
 }
 
-/** Valor preenchido de um campo no FormData (checkbox desmarcado não conta). */
-export function preenchido(form: FormData, c: { id: string; type: string }): boolean {
-  const vs = form.getAll(nomeInput(c.id)).map((v) => String(v).trim());
-  if (c.type === "boolean") return vs.includes("on");
-  return vs.some((v) => v !== "");
-}
+const preenchido = (valores: Record<string, string[]>, c: { id: string; type: string }) => {
+  const vs = (valores[c.id] ?? []).map((v) => v.trim());
+  return c.type === "boolean" ? vs.includes("on") : vs.some((v) => v !== "");
+};
 
 export function NovoCard({
   ws,
@@ -40,6 +30,11 @@ export function NovoCard({
   aberto,
   onOpenChange,
   pessoas,
+  hoje,
+  titulo = "Novo card",
+  descricao,
+  enviar,
+  aoCriar,
 }: {
   ws: string;
   board: string;
@@ -47,22 +42,40 @@ export function NovoCard({
   aberto: boolean;
   onOpenChange: (v: boolean) => void;
   pessoas: Record<string, string>;
+  hoje: string;
+  titulo?: string;
+  descricao?: string;
+  /** Envio alternativo (ex.: criar filho já vinculado ao pai). Padrão: cria no board e abre o card. */
+  enviar?: (form: FormData) => Promise<ResultadoCriacao>;
+  aoCriar?: (id: string) => void;
 }) {
   const router = useRouter();
+  const [valores, setValores] = useState<Record<string, string[]>>({});
   const [erros, setErros] = useState<Record<string, string>>({});
   const [erroGeral, setErroGeral] = useState<string | null>(null);
   const [pendente, iniciar] = useTransition();
 
-  function validar(form: FormData): boolean {
-    if (!fase) return false;
+  const campos = useMemo(() => fase?.campos ?? [], [fase]);
+  const estados = useMemo(() => estadoCriacao(campos, registroDoForm(campos, valores), fase?.id ? fase.nome : null, hoje), [campos, valores, fase, hoje]);
+  const visiveis = campos.filter((c) => estados[c.id]?.visivel);
+
+  function reiniciar() {
+    setValores({});
+    setErros({});
+    setErroGeral(null);
+  }
+
+  function validar(atuais: Record<string, string[]>): boolean {
+    const est = estadoCriacao(campos, registroDoForm(campos, atuais), fase?.id ? fase.nome : null, hoje);
+    const vis = campos.filter((c) => est[c.id]?.visivel);
     const e: Record<string, string> = {};
-    for (const c of fase.campos) if (c.obrigatorio && !preenchido(form, c)) e[c.id] = "Obrigatório nesta fase";
+    for (const c of vis) if (est[c.id]?.obrigatorio && !preenchido(atuais, c)) e[c.id] = "Obrigatório nesta fase";
     setErros(e);
     if (Object.keys(e).length) {
       setErroGeral("Preencha os campos obrigatórios.");
       return false;
     }
-    if (!fase.campos.some((c) => preenchido(form, c))) {
+    if (!vis.some((c) => preenchido(atuais, c))) {
       setErroGeral("Preencha ao menos um campo para criar o card.");
       return false;
     }
@@ -75,8 +88,7 @@ export function NovoCard({
       open={aberto}
       onOpenChange={(v) => {
         onOpenChange(v);
-        setErros({});
-        setErroGeral(null);
+        reiniciar();
       }}
     >
       <DialogContent className="max-w-2xl" aria-describedby="novo-card-desc">
@@ -84,15 +96,20 @@ export function NovoCard({
           <form
             noValidate
             className="flex min-h-0 flex-col"
+            onChange={(e) => setValores(valoresDoFormData(new FormData(e.currentTarget)))}
             onSubmit={(e) => {
-              const form = new FormData(e.currentTarget);
               e.preventDefault();
-              if (!validar(form)) return;
+              const form = new FormData(e.currentTarget);
+              const atuais = valoresDoFormData(form);
+              setValores(atuais);
+              if (!validar(atuais)) return;
               iniciar(async () => {
-                const r = await criarCardComCamposAction(ws, board, fase.id, form);
+                const r = enviar ? await enviar(form) : await criarCardComCamposAction(ws, board, fase.id, form);
                 if (r.ok) {
                   onOpenChange(false);
-                  router.push(`/w/${ws}/b/${board}/c/${r.id}`);
+                  reiniciar();
+                  if (aoCriar) aoCriar(r.id);
+                  else router.push(`/w/${ws}/b/${board}/c/${r.id}`);
                 } else {
                   setErroGeral(r.motivo);
                   setErros(Object.fromEntries((r.campos ?? []).map((id) => [id, "Verifique este campo"])));
@@ -101,31 +118,30 @@ export function NovoCard({
             }}
           >
             <DialogHeader>
-              <DialogTitle>Novo card</DialogTitle>
+              <DialogTitle>{titulo}</DialogTitle>
               <DialogDescription id="novo-card-desc">
-                {fase.id ? `Fase: ${fase.nome}. ` : ""}Campos com * são obrigatórios.
+                {descricao ?? (fase.id ? `Fase: ${fase.nome}. ` : "")}Campos com * são obrigatórios.
               </DialogDescription>
             </DialogHeader>
             <DialogBody className="grid grid-cols-2 gap-x-5 gap-y-4">
-              {fase.campos.map((c) => (
+              {visiveis.map((c) => (
                 <input key={`h-${c.id}`} type="hidden" name="campos" value={c.id} />
               ))}
-              {fase.campos.length === 0 && (
-                <p className="col-span-2 text-sm text-muted-foreground">Nenhum campo editável nesta fase. Configure os campos do board.</p>
-              )}
-              {fase.campos.map((c) => {
+              {visiveis.length === 0 && <p className="col-span-2 text-sm text-muted-foreground">Nenhum campo editável nesta fase. Configure os campos do board.</p>}
+              {visiveis.map((c) => {
                 const id = `novo-${c.id}`;
+                const obrigatorio = !!estados[c.id]?.obrigatorio;
                 return (
                   <div key={c.id} className={cn("flex flex-col gap-1.5", c.type === "long_text" && "col-span-2")} data-campo-novo={c.name}>
                     <Label htmlFor={id}>
                       {c.name}
-                      {c.obrigatorio && (
+                      {obrigatorio && (
                         <span className="ml-0.5 text-destructive" aria-hidden>
                           *
                         </span>
                       )}
                     </Label>
-                    <CampoInput campo={c} valor={null} pessoas={pessoas} id={id} obrigatorio={c.obrigatorio} />
+                    <CampoInput campo={c} valor={null} pessoas={pessoas} id={id} obrigatorio={obrigatorio} />
                     {erros[c.id] ? (
                       <p className="text-xs text-destructive" role="alert">
                         {erros[c.id]}
@@ -146,7 +162,7 @@ export function NovoCard({
               <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={pendente || fase.campos.length === 0}>
+              <Button type="submit" disabled={pendente || visiveis.length === 0}>
                 {pendente ? "Criando…" : "Criar card"}
               </Button>
             </DialogFooter>
