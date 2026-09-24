@@ -40,7 +40,7 @@ export function TabelaBoard({ ws, board, colunas, linhas }: { ws: string; board:
           cell: (info) => {
             const l = info.row.original;
             return (
-              <Link href={`/w/${ws}/b/${board}/c/${l.id}`} className="font-medium hover:underline">
+              <Link href={`/w/${ws}/b/${board}/c/${l.id}?v=tabela`} scroll={false} className="font-medium hover:underline">
                 {l.titulo}
                 <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">{idCurto(l.id)}</span>
               </Link>
