@@ -20,7 +20,7 @@ services:
     environment:
       DATABASE_URL: postgres://plexu:plexu@db:5432/plexu
       APP_URL: http://localhost:3000
-      APP_SECRET: change-me
+      APP_SECRET: ${APP_SECRET:-}   # obrigatório: defina no .env (16+ caracteres aleatórios)
     ports: ["3000:3000"]
     command: sh -c "node scripts/migrate.mjs && node server.js"
 
