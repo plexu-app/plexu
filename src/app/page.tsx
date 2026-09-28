@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { usuarioAtual } from "@/server/auth/sessao";
-import { haUsuarios, workspacesDoUsuario } from "@/server/consultas";
+import { haUsuarios, workspacesArquivadosDoOwner, workspacesDoUsuario } from "@/server/consultas";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +9,7 @@ export default async function Home() {
   const u = await usuarioAtual();
   if (!u) redirect("/login");
   const [ws] = await workspacesDoUsuario(u.id);
+  if (!ws && (await workspacesArquivadosDoOwner(u.id)).length) redirect("/arquivados");
   if (!ws) {
     return <main className="p-10 text-sm">Sua conta não participa de nenhum workspace. Peça um convite a um administrador.</main>;
   }

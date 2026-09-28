@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Database, KanbanSquare } from "lucide-react";
 import { NovoBoard } from "@/components/criar-board";
 import { exigirMembro, podeConfigurar } from "@/server/acesso";
@@ -6,7 +7,8 @@ import { boardsDoWorkspace } from "@/server/consultas";
 
 export default async function Boards({ params }: { params: Promise<{ ws: string }> }) {
   const { ws } = await params;
-  const ctx = await exigirMembro(ws);
+  const ctx = await exigirMembro(ws, { permitirArquivado: true });
+  if (ctx.ws.arquivado) redirect(`/w/${ws}/settings`);
   const lista = await boardsDoWorkspace(ctx.ws.id);
   return (
     <main className="mx-auto w-full max-w-[1400px] px-6 py-6">

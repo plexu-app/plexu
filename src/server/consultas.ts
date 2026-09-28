@@ -1,6 +1,6 @@
 import "server-only";
 // Leituras para a UI. Componentes e route handlers não fazem SQL: chamam estas funções.
-import { and, asc, count, desc, eq, ilike, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   boards,
@@ -102,23 +102,39 @@ export async function haUsuarios(): Promise<boolean> {
   return r.n > 0;
 }
 
+/** Workspaces ativos do usuário (arquivados e excluídos não aparecem). */
 export async function workspacesDoUsuario(userId: string) {
   return db
     .select({ slug: workspaces.slug, name: workspaces.name, papel: workspaceMembers.orgRole })
     .from(workspaceMembers)
     .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
-    .where(eq(workspaceMembers.userId, userId))
+    .where(and(eq(workspaceMembers.userId, userId), isNull(workspaces.archivedAt), isNull(workspaces.deletedAt)))
     .orderBy(asc(workspaces.name));
 }
 
-export async function membroDoWorkspace(userId: string, wsSlug: string) {
-  const [m] = await db
-    .select({ id: workspaces.id, slug: workspaces.slug, name: workspaces.name, papel: workspaceMembers.orgRole })
+/** Workspaces arquivados em que o usuário é owner (só ele pode restaurar). */
+export async function workspacesArquivadosDoOwner(userId: string) {
+  return db
+    .select({ id: workspaces.id, slug: workspaces.slug, name: workspaces.name, archivedAt: workspaces.archivedAt })
     .from(workspaceMembers)
     .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
-    .where(and(eq(workspaceMembers.userId, userId), eq(workspaces.slug, wsSlug)));
+    .where(and(eq(workspaceMembers.userId, userId), eq(workspaceMembers.orgRole, "owner"), isNotNull(workspaces.archivedAt), isNull(workspaces.deletedAt)))
+    .orderBy(asc(workspaces.name));
+}
+
+/**
+ * Pertencimento ao workspace. Arquivado conta como inexistente (some de tudo), exceto com
+ * incluirArquivado: aí só o owner o vê (para restaurar ou excluir). Excluído nunca aparece.
+ */
+export async function membroDoWorkspace(userId: string, wsSlug: string, opcoes: { incluirArquivado?: boolean } = {}) {
+  const [m] = await db
+    .select({ id: workspaces.id, slug: workspaces.slug, name: workspaces.name, archivedAt: workspaces.archivedAt, papel: workspaceMembers.orgRole })
+    .from(workspaceMembers)
+    .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
+    .where(and(eq(workspaceMembers.userId, userId), eq(workspaces.slug, wsSlug), isNull(workspaces.deletedAt)));
   if (!m) return null;
-  return { ws: { id: m.id, slug: m.slug, name: m.name }, papel: m.papel as Papel };
+  if (m.archivedAt && !(opcoes.incluirArquivado && m.papel === "owner")) return null;
+  return { ws: { id: m.id, slug: m.slug, name: m.name, arquivado: !!m.archivedAt }, papel: m.papel as Papel };
 }
 
 export async function membrosDoWorkspace(wsId: string) {
