@@ -1,7 +1,7 @@
 // Conversor Pipefy → template com um export FICTÍCIO (pedidos com itens), montado aqui.
 import { describe, expect, it } from "vitest";
 import { validarTemplate } from "../../template";
-import { anonimizarExports, converterPipefy, semParenteses } from "../converter";
+import { anonimizarExports, converterPipefy, regexDoPipefy, semParenteses } from "../converter";
 import type { PfAutomacao, PfCampo, PfExport } from "../export";
 import { relatorioMarkdown } from "../relatorio";
 
@@ -24,7 +24,7 @@ const ITENS: PfExport = {
     name: "Itens do pedido",
     title_field: { id: "descricao" },
     table_fields: [
-      campo("descricao", "900", "Descrição", "short_text"),
+      campo("descricao", "900", "Descrição", "short_text", { required: true, custom_validation: "\\A[A-Z0-9]+\\z", help: "Código em maiúsculas, sem espaços." }),
       campo("valor", "901", "Valor", "currency"),
       campo("aprovado", "902", "Aprovado", "radio_vertical", { options: ["Sim", "Não"] }),
       campo("cnpj_pedido", "903", "CNPJ do pedido", "cnpj"),
@@ -225,6 +225,34 @@ describe("converterPipefy", () => {
     const antes = JSON.stringify(PEDIDOS);
     anonimizarExports([PEDIDOS]);
     expect(JSON.stringify(PEDIDOS)).toBe(antes);
+  });
+});
+
+describe("formato e título", () => {
+  it("regex do Pipefy vira validation com o texto de ajuda como mensagem (âncoras Ruby → JS)", () => {
+    const itens = board("itens-do-pedido");
+    expect(itens.fields.find((f) => f.key === "descricao")).toMatchObject({
+      help: "Código em maiúsculas, sem espaços.",
+      validation: { regex: "^[A-Z0-9]+$", message: "Código em maiúsculas, sem espaços." },
+    });
+    expect(regexDoPipefy("^[A-Z ]+$")).toBe("^[A-Z ]+$");
+    expect(regexDoPipefy("([")).toBeNull();
+  });
+
+  it("sem título marcado no Pipefy: primeiro texto obrigatório", () => {
+    const semTitulo: PfExport = {
+      ...ITENS,
+      id: "4004",
+      repo: {
+        ...ITENS.repo,
+        id: "4004",
+        name: "Cadastro",
+        title_field: null,
+        table_fields: [campo("obs", "950", "Observação", "short_text"), campo("nome", "951", "Nome", "short_text", { required: true })],
+      },
+      automacoes: [],
+    };
+    expect(converterPipefy([semTitulo]).template.boards[0].title_field).toBe("nome");
   });
 });
 

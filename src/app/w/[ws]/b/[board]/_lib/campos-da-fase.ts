@@ -46,6 +46,7 @@ export function camposDaFase(board: Pick<BoardCompleto, "campos" | "fases">, aju
           type: c.type,
           config: c.config,
           helpText: c.helpText,
+          validation: c.validation,
           visibleExpr: c.visibleExpr,
           requiredExpr: c.requiredExpr,
           ajuste: aj ? { visible: aj.visible, editable: aj.editable, required: aj.required } : null,

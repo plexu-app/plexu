@@ -34,6 +34,8 @@ export interface CampoTemplate {
   visible?: string | null;
   default?: string | null;
   unique?: boolean;
+  /** Formato de campos de texto: regex (JavaScript) e mensagem mostrada abaixo do campo quando não bate. */
+  validation?: { regex?: string; message?: string; description?: string };
   /** Decisão 18-revisada: keys das fases onde o campo é preenchido. */
   fill_phases?: string[];
   editable_everywhere?: boolean;
@@ -147,6 +149,13 @@ export function validarTemplate(t: Template, externos: Iterable<string> = []): E
       expr(`${oc} › required`, c.required);
       expr(`${oc} › visible`, c.visible);
       expr(`${oc} › default`, c.default);
+      if (c.validation?.regex) {
+        try {
+          new RegExp(c.validation.regex);
+        } catch (e) {
+          err(oc, `validation.regex inválido: ${(e as Error).message}`);
+        }
+      }
       if ((c.type === "select" || c.type === "multi_select") && !c.options?.length) err(oc, "seleção sem opções");
       if (c.type === "relation") {
         const alvo = c.relation?.board;

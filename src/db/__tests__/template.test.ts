@@ -42,7 +42,7 @@ const TEMPLATE: Template = {
       title_field: "descricao",
       phases: [],
       fields: [
-        { key: "descricao", name: "Descrição", type: "text" },
+        { key: "descricao", name: "Descrição", type: "text", validation: { regex: "^[A-Za-zÀ-ú ]+$", message: "Use só letras." } },
         { key: "valor", name: "Valor", type: "currency", currency: { code: "BRL" } },
         { key: "objeto_pedido", name: "Objeto do pedido", type: "lookup", lookup: { via: "pedidos.itens", path: "objeto", mode: "ref" } },
       ],

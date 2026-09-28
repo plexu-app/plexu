@@ -5,6 +5,7 @@ import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { emitirEventoConfig, garantirIndiceExclusivo, type Actor } from "../core";
 import { normalizarConfig, type ContextoConfig } from "../lib/config-campos";
 import { fasesDoCampo } from "../lib/fases-preenchimento";
+import { normalizarValidacao } from "../lib/validacao";
 import { slugify, slugLivre } from "../lib/slug";
 import { validarTemplate, VERSAO_TEMPLATE, type BoardTemplate, type CampoTemplate, type Template } from "../lib/template";
 import { db } from "./index";
@@ -164,6 +165,7 @@ export async function importarTemplate(t: Template, op: OpcoesImportacao): Promi
             visibleExpr: c.visible ?? null,
             defaultValueExpr: c.default ?? null,
             uniqueValue: c.unique === true,
+            validation: normalizarValidacao(c.validation),
           })
           .where(eq(fields.id, fieldId));
         if ((config.relation as { exclusive?: boolean } | undefined)?.exclusive) await garantirIndiceExclusivo(tx, fieldId);
@@ -246,6 +248,8 @@ export async function exportarTemplate(wsSlug: string, boardSlugs: string[], nom
     if (f.visibleExpr) c.visible = f.visibleExpr;
     if (f.defaultValueExpr) c.default = f.defaultValueExpr;
     if (f.uniqueValue) c.unique = true;
+    const val = f.validation as { regex?: string; message?: string; description?: string } | null;
+    if (val?.regex || val?.message) c.validation = { ...(val.regex ? { regex: val.regex } : {}), ...(val.message ? { message: val.message } : {}), ...(val.description ? { description: val.description } : {}) };
     const fases = fasesDoCampo(cfg).map((id) => keyFase.get(id)).filter((x): x is string => !!x);
     if (fases.length) {
       c.fill_phases = fases;

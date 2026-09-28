@@ -16,6 +16,8 @@ export interface PfCampo {
   unique?: boolean | null;
   description?: string | null;
   help?: string | null;
+  /** Regex de validação (campos de texto); em anexos, extensões aceitas. */
+  custom_validation?: string | null;
   options?: string[] | null;
   connectedRepo?: PfRepoRef | null;
   canConnectMultiples?: boolean | null;

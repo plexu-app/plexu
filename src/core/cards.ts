@@ -510,3 +510,26 @@ export function restoreCard(input: RestoreCardInput, opts?: OpcoesOp): Promise<C
 }
 
 export { nomeIndiceExclusivo };
+
+// ---------------------------------------------------------------------------
+// recalcularTitulos (título derivado: campo de título ou primeiro texto preenchido)
+// ---------------------------------------------------------------------------
+
+/**
+ * Recalcula cards.title de todos os cards ativos do board — usado quando o campo de título muda.
+ * Título é derivado (não é campo), então não emite evento. Devolve quantos cards mudaram.
+ */
+export function recalcularTitulos(input: { boardId: string; actor: Actor }, opts?: OpcoesOp): Promise<number> {
+  return executar(input.actor, opts, async (op) => {
+    const q = await carregarQuadro(op, input.boardId);
+    const rows = await op.tx.select().from(cards).where(and(eq(cards.boardId, input.boardId), isNull(cards.deletedAt)));
+    let n = 0;
+    for (const c of rows) {
+      const t = tituloDe(q, c.props, c.computed);
+      if (t === c.title) continue;
+      await op.tx.update(cards).set({ title: t }).where(eq(cards.id, c.id));
+      n++;
+    }
+    return n;
+  });
+}

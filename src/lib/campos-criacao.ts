@@ -20,6 +20,8 @@ export interface CampoCriacaoDef {
   visibleExpr: string | null;
   requiredExpr: string | null;
   ajuste: AjusteCriacao | null;
+  /** fields.validation (regex + mensagem), checada no formulário antes de enviar. */
+  validation?: Record<string, unknown> | null;
 }
 
 export interface EstadoCriacao {
