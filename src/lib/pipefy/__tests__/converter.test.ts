@@ -280,3 +280,61 @@ describe("semParenteses", () => {
     expect(semParenteses("(a) && !(b)")).toBe("(a) && !(b)");
   });
 });
+
+describe("mapeamento de tipos Pipefy → Plexu", () => {
+  // Um campo de cada tipo, num database fictício (sem fases), para checar só o tipo resultante.
+  const tipos: [string, string][] = [
+    ["short_text", "text"],
+    ["long_text", "long_text"],
+    ["email", "text"],
+    ["phone", "text"],
+    ["time", "text"],
+    ["number", "number"],
+    ["currency", "currency"],
+    ["date", "date"],
+    ["datetime", "datetime"],
+    ["due_date", "datetime"],
+    ["select", "select"],
+    ["radio_vertical", "select"],
+    ["radio_horizontal", "select"],
+    ["checklist_vertical", "multi_select"],
+    ["checklist_horizontal", "multi_select"],
+    ["label_select", "multi_select"],
+    ["assignee_select", "person"],
+    ["attachment", "attachment"],
+    ["cpf", "cpf"],
+    ["cnpj", "cnpj"],
+    ["id", "sequence"],
+  ];
+  const exp: PfExport = {
+    fonte: "pipefy",
+    id: "5005",
+    tipo: "table",
+    repo: {
+      id: "5005",
+      name: "Tipos",
+      labels: [{ id: "1", name: "Etiqueta" }],
+      table_fields: [
+        campo("nome", "1000", "Nome", "short_text"),
+        ...tipos.map(([t], i) => campo(`c_${t}`, String(1001 + i), `Campo ${t}`, t, { options: ["A", "B"], custom_validation: t === "attachment" ? ".pdf, .docx" : null })),
+        campo("aviso", "1100", "Aviso", "statement"),
+      ],
+    },
+    automacoes: [],
+  };
+  const campos = converterPipefy([exp]).template.boards[0].fields;
+
+  it.each(tipos)("%s → %s", (pipefy, plexu) => {
+    expect(campos.find((f) => f.name === `Campo ${pipefy}`)?.type).toBe(plexu);
+  });
+
+  it("attachment continua anexo (sem validation: custom_validation de anexo são extensões, não regex)", () => {
+    const anexo = campos.find((f) => f.name === "Campo attachment");
+    expect(anexo).toMatchObject({ type: "attachment" });
+    expect(anexo?.validation).toBeUndefined();
+  });
+
+  it("statement não vira campo", () => {
+    expect(campos.find((f) => f.name === "Aviso")).toBeUndefined();
+  });
+});

@@ -91,15 +91,23 @@ export function NovoCard({
     const est = estadoCriacao(campos, registroDoForm(campos, atuais), fase?.id ? fase.nome : null, hoje);
     const vis = campos.filter((c) => est[c.id]?.visivel);
     const e: Record<string, string> = {};
-    for (const c of vis) if (est[c.id]?.obrigatorio && !preenchido(atuais, c)) e[c.id] = "Obrigatório nesta fase";
+    for (const c of vis) {
+      if (!est[c.id]?.obrigatorio || preenchido(atuais, c)) continue;
+      // Anexo obrigatório não pode ser preenchido enquanto não houver upload: é erro de configuração.
+      e[c.id] = c.type === "attachment" ? `${c.name} é obrigatório, mas o envio de anexos ainda não está disponível — corrija a configuração.` : "Obrigatório nesta fase";
+    }
     // Formato (regex) com a mensagem configurada no campo — não só a validação nativa do navegador.
+    const deFormato = new Set<string>();
     for (const c of vis) {
       const formato = e[c.id] ? null : validarFormato(c, (atuais[c.id]?.[0] ?? "").trim());
-      if (formato) e[c.id] = formato;
+      if (formato) {
+        e[c.id] = formato;
+        deFormato.add(c.id);
+      }
     }
     setErros(e);
     if (Object.keys(e).length) {
-      const soFormato = Object.values(e).every((m) => m !== "Obrigatório nesta fase");
+      const soFormato = Object.keys(e).every((id) => deFormato.has(id));
       apontar(Object.keys(e), soFormato ? "Corrija o formato dos campos destacados." : "Preencha os campos obrigatórios.", atuais);
       return false;
     }
