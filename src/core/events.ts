@@ -18,7 +18,7 @@ export type EventoCard =
   | {
       type: "card.field_updated";
       /** computed=true quando o valor é calculado (rollup, dynamic_text). */
-      data: { field_id: string; old: unknown; new: unknown; computed?: boolean; /** lookup em modo copy, gravado ao mudar a ligação */ copia?: boolean };
+      data: { field_id: string; old: unknown; new: unknown; computed?: boolean; /** lookup em modo copy, gravado ao mudar a ligação */ copia?: boolean; /** escrita feita por um espelho editável */ via_card_id?: string; via_field_id?: string };
     }
   | { type: "card.link_added"; data: DadosLink }
   | { type: "card.link_removed"; data: DadosLink }

@@ -1,6 +1,6 @@
 // Campos: validação por tipo, valores padrão, unicidade, sequence e campos calculados.
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
-import { attachments, cards, sequences, workspaceMembers } from "../db/schema";
+import { attachments, cards, fields, sequences, workspaceMembers } from "../db/schema";
 import type { ExprCompilada, ExprContext, Registro } from "../lib/expr";
 import { emitirEvento } from "./events";
 import {
@@ -431,13 +431,39 @@ export interface ConfigLookup {
   via_field?: string;
   path?: string;
   mode?: "copy" | "ref";
+  /** Só em "ref": editar o espelho grava no card de origem (writeback), com as regras de lá. */
+  editable_writeback?: boolean;
 }
 
 export const configLookup = (c: Campo): ConfigLookup => (c.config.lookup ?? {}) as ConfigLookup;
 export const modoLookup = (c: Campo): "copy" | "ref" => (configLookup(c).mode === "copy" ? "copy" : "ref");
 
+/** Espelho editável: lookup "ref" com editable_writeback. */
+export const espelhoEditavel = (c: Campo): boolean => c.type === "lookup" && modoLookup(c) === "ref" && configLookup(c).editable_writeback === true;
+
+/**
+ * Board e campo de origem do lookup: o board do outro lado da relação via_field (relação deste board →
+ * board alvo; relação de outro board apontando para cá → board dela) e o campo pelo slug em path.
+ * null quando path é metadado (titulo, fase, status) ou não existe.
+ */
+export async function origemDoLookup(op: Op, q: Quadro, c: Campo): Promise<{ quadro: Quadro; campo: Campo } | null> {
+  const cfg = configLookup(c);
+  if (!cfg.via_field || !cfg.path) return null;
+  const propria = q.campoPorId.get(cfg.via_field);
+  let boardOrigem: string | undefined;
+  if (propria?.type === "relation") boardOrigem = configRelacao(propria).target_board;
+  else {
+    const [f] = await op.tx.select({ boardId: fields.boardId }).from(fields).where(eq(fields.id, cfg.via_field));
+    boardOrigem = f?.boardId;
+  }
+  if (!boardOrigem) return null;
+  const qo = await carregarQuadro(op, boardOrigem);
+  const campo = qo.campoPorSlug.get(cfg.path);
+  return campo ? { quadro: qo, campo } : null;
+}
+
 /** Cards ligados a cardId pela relação via (relação deste board: destinos; de outro board: origens). */
-function ligadosPor(q: Quadro, cardId: string, via: string | undefined, ligs: Ligacao[]): string[] {
+export function ligadosPor(q: Quadro, cardId: string, via: string | undefined, ligs: Ligacao[]): string[] {
   return ligs
     .filter((l) => l.campo.id === via)
     .flatMap((l) => (l.campo.boardId === q.id ? (l.fromCardId === cardId ? [l.toCardId] : []) : l.toCardId === cardId ? [l.fromCardId] : []));
@@ -448,6 +474,13 @@ async function valorLookup(op: Op, q: Quadro, cardId: string, c: Campo, ligs: Li
   const cfg = configLookup(c);
   const ids = [...new Set(ligadosPor(q, cardId, cfg.via_field, ligs))];
   if (!ids.length || !cfg.path) return null;
+  // Caminho que aponta para uma relação no card de origem: os ids ligados lá (o registro não os traz).
+  const origem = await origemDoLookup(op, q, c);
+  if (origem?.campo.type === "relation") {
+    const links = await lerLigacoes(op, ids);
+    const alvos = ids.flatMap((id) => links.filter((l) => l.campo.id === origem.campo.id && l.fromCardId === id).map((l) => l.toCardId));
+    return alvos.length ? [...new Set(alvos)] : null;
+  }
   const regs = await registrosDe(op, ids);
   const valores = ids.map((id) => regs.get(id)?.[cfg.path!]).filter((v) => !vazio(v));
   if (ids.length === 1) return valores[0] ?? null;

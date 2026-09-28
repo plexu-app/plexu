@@ -10,7 +10,11 @@ import {
   atualizarCopias,
   garantirIndiceExclusivo,
   nomeIndiceExclusivo,
+  configLookup,
+  espelhoEditavel,
+  ligadosPor,
   normalizarEntrada,
+  origemDoLookup,
   recalcular,
   vincularAnexos,
   verificarUnicidade,
@@ -23,6 +27,7 @@ import {
   lerLigacoes,
   RASCUNHO,
   registro,
+  TIPOS_SOMENTE_LEITURA,
   tituloDe,
   vistaDe,
   type Campo,
@@ -248,13 +253,19 @@ export interface UpdateFieldsInput {
   /** Valores por field_id ou slug; null limpa. Relação: lista completa desejada de destinos. */
   props: Record<string, unknown>;
   actor: Actor;
+  /** @internal Escrita feita por um espelho editável: registrada no evento ("via card X"). */
+  via?: { cardId: string; fieldId: string };
+  /** @internal Elos card:campo já percorridos por writebacks encadeados (detecta ciclo). */
+  cadeia?: string[];
 }
 
 export function updateFields(input: UpdateFieldsInput, opts?: OpcoesOp): Promise<CardRow> {
   return executar(input.actor, opts, async (op) => {
-    const card = await lerCard(op, input.cardId, true);
-    const q = await carregarQuadro(op, card.boardId);
-    const ent = await normalizarEntrada(op, q, input.props, card.id);
+    const q = await carregarQuadro(op, (await lerCard(op, input.cardId, true)).boardId);
+    const props0 = await gravarEspelhos(op, q, input);
+    const card = await lerCard(op, input.cardId, true); // relido: writebacks podem ter mudado computed/título
+    if (!Object.keys(props0).length) return card;
+    const ent = await normalizarEntrada(op, q, props0, card.id);
     const ligs = await lerLigacoes(op, [card.id]);
     const vista = vistaDe(card);
 
@@ -288,7 +299,7 @@ export function updateFields(input: UpdateFieldsInput, opts?: OpcoesOp): Promise
       for (const [fid, v] of mudancas) {
         await emitirEvento(op.tx, origemDe(op, card), {
           type: "card.field_updated",
-          data: { field_id: fid, old: card.props[fid] ?? null, new: v },
+          data: { field_id: fid, old: card.props[fid] ?? null, new: v, ...(input.via ? { via_card_id: input.via.cardId, via_field_id: input.via.fieldId } : {}) },
         });
       }
     }
@@ -306,6 +317,44 @@ export function updateFields(input: UpdateFieldsInput, opts?: OpcoesOp): Promise
     await recalcular(op, [card.id, ...tocados]);
     return lerCard(op, card.id);
   });
+}
+
+/**
+ * Espelhos editáveis (lookup "ref" com editable_writeback) em input.props: cada valor é gravado no
+ * campo de origem do único card de origem, via updateFields (mesma transação; regras can_edit de lá
+ * valem; o recálculo propaga de volta para todos os espelhos). Devolve as props restantes.
+ */
+async function gravarEspelhos(op: Op, q: Quadro, input: UpdateFieldsInput): Promise<Record<string, unknown>> {
+  const restantes: Record<string, unknown> = {};
+  const espelhos: { campo: Campo; valor: unknown }[] = [];
+  for (const [chave, valor] of Object.entries(input.props ?? {})) {
+    const c = acharCampo(q, chave);
+    if (c?.type === "lookup") espelhos.push({ campo: c, valor });
+    else restantes[chave] = valor;
+  }
+  if (!espelhos.length) return restantes;
+  const ligs = await lerLigacoes(op, [input.cardId]);
+  for (const { campo, valor } of espelhos) {
+    const origem = espelhoEditavel(campo) ? await origemDoLookup(op, q, campo) : null;
+    if (!origem || TIPOS_SOMENTE_LEITURA.has(origem.campo.type)) {
+      throw new CoreError("somente_leitura", `campo '${campo.name}' (lookup) é somente leitura`, { campos: [campo.id] });
+    }
+    const ids = [...new Set(ligadosPor(q, input.cardId, configLookup(campo).via_field, ligs))];
+    if (ids.length !== 1) {
+      const motivo = ids.length ? "ligado a vários cards; edite no card de origem" : "sem card de origem ligado";
+      throw new CoreError("validacao", `campo '${campo.name}': ${motivo}`, { campos: [campo.id] });
+    }
+    const aqui = `${input.cardId}:${campo.id}`;
+    const la = `${ids[0]}:${origem.campo.id}`;
+    if (input.cadeia?.includes(la) || la === aqui) {
+      throw new CoreError("validacao", `campo '${campo.name}': ciclo de espelhos (a origem aponta de volta para este campo)`, { campos: [campo.id] });
+    }
+    await updateFields(
+      { cardId: ids[0], props: { [origem.campo.id]: valor }, actor: input.actor, via: { cardId: input.cardId, fieldId: campo.id }, cadeia: [...(input.cadeia ?? []), aqui] },
+      { tx: op.tx },
+    );
+  }
+  return restantes;
 }
 
 // ---------------------------------------------------------------------------
