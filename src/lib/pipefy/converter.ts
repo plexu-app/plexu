@@ -92,6 +92,17 @@ const NUMERICOS = new Set(["number", "currency"]);
 
 const SERIE = /^(.*?)(\d{1,3})(\D*)$/;
 
+/** Regex do Pipefy (sintaxe Ruby) → JavaScript: âncoras \A e \z/\Z viram ^ e $. null se não compilar. */
+export function regexDoPipefy(fonte: string): string | null {
+  const js = fonte.trim().replace(/\\A/g, "^").replace(/\\[zZ]/g, "$");
+  try {
+    new RegExp(js);
+    return js;
+  } catch {
+    return null;
+  }
+}
+
 /** Tira parênteses externos só quando envolvem a expressão inteira ("(a) && (b)" fica como está). */
 export function semParenteses(s: string): string {
   let t = s.trim();
@@ -413,6 +424,12 @@ class Conversor {
       }
       const c: CampoTemplate = { key: unico(slugCampo(pf.label), usados), name: pf.label, type: map.tipo };
       if (pf.help || pf.description) c.help = pf.help || pf.description;
+      // Regex do Pipefy (campos de texto) com o texto de ajuda como mensagem de erro.
+      if ((map.tipo === "text" || map.tipo === "long_text") && pf.custom_validation?.trim()) {
+        const re = regexDoPipefy(pf.custom_validation);
+        if (re) c.validation = { regex: re, ...(c.help ? { message: c.help } : {}) };
+        else b.rel.naoRepresentado.push({ item: `${pf.label}: formato`, motivo: `regex do Pipefy não é válido em JavaScript: ${pf.custom_validation}` });
+      }
       if (pf.required) c.required = "true";
       if (pf.unique) c.unique = true;
       if (faseKey) {
@@ -468,7 +485,12 @@ class Conversor {
     }
     // Anexo/seleção múltipla não servem de título: primeiro campo de texto.
     const titulavel = (c: CampoTemplate | null | undefined) => !!c && !["relation", "attachment", "multi_select"].includes(c.type);
-    b.tpl.title_field = (titulavel(tf) ? tf!.key : null) ?? b.tpl.fields.find((f) => f.type === "text")?.key ?? null;
+    // Título: o marcado no Pipefy; senão o primeiro texto obrigatório; senão o primeiro texto.
+    b.tpl.title_field =
+      (titulavel(tf) ? tf!.key : null) ??
+      b.tpl.fields.find((f) => f.type === "text" && f.required === "true")?.key ??
+      b.tpl.fields.find((f) => f.type === "text")?.key ??
+      null;
     if (tf && !titulavel(tf))
       b.rel.naoRepresentado.push({
         item: `título do card = ${tf.name}`,
@@ -516,6 +538,23 @@ class Conversor {
   }
 
   // -- referências e condições ---------------------------------------------
+
+  /**
+   * Valor comparado na condição, no vocabulário do Plexu: em campos de etiqueta (label_select) o
+   * Pipefy compara o id da etiqueta, e as opções do Plexu são os nomes.
+   */
+  valorDaCondicao(b: BoardConv, addr: string, v: string | null): string | null {
+    const [a, filho] = addr.split(".");
+    let board = b;
+    let cc = b.porRef.get(a);
+    if (filho !== undefined) {
+      const alvoKey = cc?.serie?.alvo?.key ?? cc?.campo?.relation?.board;
+      board = this.boards.find((x) => x.key === alvoKey) ?? b;
+      cc = board.porRef.get(filho);
+    }
+    if (cc?.pf.type !== "label_select" || v == null) return v;
+    return (board.exp.repo.labels ?? []).find((l) => l.id === v)?.name ?? v;
+  }
 
   ref(b: BoardConv, addr: string): Ref | string {
     if (addr === "current_phase") return { k: "fase" };
@@ -567,10 +606,10 @@ class Conversor {
                   ? "fase != null"
                   : null;
       } else if (r.k === "card") {
-        e = exprBase(`card.${r.slug}`, r.tipo, x.operation, x.value);
+        e = exprBase(`card.${r.slug}`, r.tipo, x.operation, this.valorDaCondicao(b, x.field_address, x.value));
       } else {
         generalizada ||= r.generalizado;
-        const dentro = exprBase(`p.${r.slug}`, r.tipo, x.operation, x.value);
+        const dentro = exprBase(`p.${r.slug}`, r.tipo, x.operation, this.valorDaCondicao(b, x.field_address, x.value));
         e = dentro ? `filhos(${JSON.stringify(r.rel)}).algum(p, ${dentro})` : null;
       }
       if (!e) return `operação ${x.operation} sem equivalente`;

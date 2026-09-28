@@ -29,6 +29,7 @@ export interface CampoConfig {
   defaultValueExpr: string | null;
   uniqueValue: boolean;
   helpText: string | null;
+  validation?: Record<string, unknown> | null;
 }
 
 export interface ContextoCampos {
@@ -378,6 +379,8 @@ function EditorCampo({ ctx, campo, fechar }: { ctx: ContextoCampos; campo: Campo
   const [versaoInicial, setVersaoInicial] = useState(0);
   const [unico, setUnico] = useState(campo?.uniqueValue ?? false);
   const [ajuda, setAjuda] = useState(campo?.helpText ?? "");
+  const [formato, setFormato] = useState(String(campo?.validation?.regex ?? ""));
+  const [msgFormato, setMsgFormato] = useState(String(campo?.validation?.message ?? ""));
   const [titulo, setTitulo] = useState(ctx.titleFieldId !== null && ctx.titleFieldId === campo?.id);
   const set = (k: string, v: Config) => setConfig((c) => ({ ...c, [k]: v }));
   const proprias = ctx.campos.filter((c) => c.type === "relation" && c.id !== campo?.id);
@@ -411,6 +414,7 @@ function EditorCampo({ ctx, campo, fechar }: { ctx: ContextoCampos; campo: Campo
               unico,
               ajuda,
               titulo,
+              validacao: { ...(campo?.validation ?? {}), regex: formato, message: msgFormato },
             }),
           campo ? "Campo salvo" : "Campo criado",
           fechar,
@@ -536,6 +540,19 @@ function EditorCampo({ ctx, campo, fechar }: { ctx: ContextoCampos; campo: Campo
                     }}
                     placeholder='hoje()  ou  "servico"'
                   />
+                </div>
+              )}
+              {(tipo === "text" || tipo === "long_text") && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="campo-formato">Formato (regex)</Label>
+                    <Input id="campo-formato" aria-label="Formato (regex)" className="font-mono" value={formato} onChange={(e) => setFormato(e.target.value)} placeholder="^[A-Z ]+$" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="campo-formato-msg">Mensagem quando o formato não bate</Label>
+                    <Input id="campo-formato-msg" aria-label="Mensagem de formato" value={msgFormato} onChange={(e) => setMsgFormato(e.target.value)} placeholder="Ex.: use só letras maiúsculas" />
+                  </div>
+                  <p className="col-span-2 text-xs text-muted-foreground">Sem mensagem, aparece “Formato inválido. Esperado: …”. A validação vale no formulário e no servidor.</p>
                 </div>
               )}
               <ConfigAvancadaPorTipo tipo={tipo} config={config} set={set} />

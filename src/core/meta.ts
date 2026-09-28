@@ -265,11 +265,18 @@ export function valorBruto(c: Pick<Campo, "id" | "type">, card: { props: Record<
 
 /** Valor do título a partir do campo de título do board. */
 export function tituloDe(q: Quadro, props: Record<string, unknown>, computed: Record<string, unknown>): string {
-  if (!q.titleFieldId) return "";
-  const c = q.campoPorId.get(q.titleFieldId);
-  const v = c ? valorBruto(c, { props, computed }) : props[q.titleFieldId];
-  if (vazio(v)) return "";
-  return Array.isArray(v) ? v.join(", ") : String(v);
+  const texto = (v: unknown) => (vazio(v) ? "" : Array.isArray(v) ? v.join(", ") : String(v));
+  const c = q.titleFieldId ? q.campoPorId.get(q.titleFieldId) : undefined;
+  const principal = c ? texto(valorBruto(c, { props, computed })) : "";
+  if (principal) return principal;
+  // Card nunca fica "sem título" se tem texto preenchido: sem campo de título (ou vazio, ex.: oculto
+  // por condição), usa o primeiro campo de texto não vazio, na ordem dos campos.
+  for (const f of q.campos) {
+    if (f.type !== "text" && f.type !== "long_text") continue;
+    const v = texto(props[f.id]).trim();
+    if (v) return v.length > 120 ? `${v.slice(0, 117)}…` : v;
+  }
+  return "";
 }
 
 /** Data AAAA-MM-DD no fuso do workspace. */

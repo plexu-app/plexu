@@ -12,6 +12,7 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, Dia
 import { Label } from "@/components/ui/input";
 import { diagnosticarFaltantes, estadoCriacao, registroDoForm, valoresDoFormData, type CampoCriacaoDef } from "@/lib/campos-criacao";
 import { cn } from "@/lib/utils";
+import { validarFormato } from "@/lib/validacao";
 
 export interface FaseNovoCard {
   id: string | null;
@@ -91,9 +92,15 @@ export function NovoCard({
     const vis = campos.filter((c) => est[c.id]?.visivel);
     const e: Record<string, string> = {};
     for (const c of vis) if (est[c.id]?.obrigatorio && !preenchido(atuais, c)) e[c.id] = "Obrigatório nesta fase";
+    // Formato (regex) com a mensagem configurada no campo — não só a validação nativa do navegador.
+    for (const c of vis) {
+      const formato = e[c.id] ? null : validarFormato(c, (atuais[c.id]?.[0] ?? "").trim());
+      if (formato) e[c.id] = formato;
+    }
     setErros(e);
     if (Object.keys(e).length) {
-      apontar(Object.keys(e), "Preencha os campos obrigatórios.", atuais);
+      const soFormato = Object.values(e).every((m) => m !== "Obrigatório nesta fase");
+      apontar(Object.keys(e), soFormato ? "Corrija o formato dos campos destacados." : "Preencha os campos obrigatórios.", atuais);
       return false;
     }
     if (!vis.some((c) => preenchido(atuais, c))) {
@@ -134,7 +141,8 @@ export function NovoCard({
                   if (aoCriar) aoCriar(r.id);
                   else router.push(`/w/${ws}/b/${board}/c/${r.id}`);
                 } else {
-                  setErros(Object.fromEntries((r.campos ?? []).map((id) => [id, "Verifique este campo"])));
+                  // Erro de um campo só (ex.: formato): a mensagem do servidor vai para baixo do campo.
+                  setErros(Object.fromEntries((r.campos ?? []).map((id) => [id, r.campos?.length === 1 ? r.motivo.replace(/^campo '[^']*': /, "") : "Verifique este campo"])));
                   apontar(r.campos ?? [], r.motivo, atuais);
                 }
               });
@@ -186,13 +194,12 @@ export function NovoCard({
                     ) : (
                       <CampoInput campo={c} valor={null} pessoas={pessoas} id={id} obrigatorio={obrigatorio} />
                     )}
-                    {erros[c.id] ? (
-                      <p className="text-xs text-destructive" role="alert">
+                    {erros[c.id] && (
+                      <p className="text-xs text-destructive-strong" role="alert" data-erro-campo>
                         {erros[c.id]}
                       </p>
-                    ) : (
-                      c.helpText && <p className="text-xs text-muted-foreground">{c.helpText}</p>
                     )}
+                    {c.helpText && <p className="text-xs text-muted-foreground">{c.helpText}</p>}
                   </div>
                 );
               })}

@@ -4,7 +4,8 @@ import "server-only";
 import { and, asc, count, eq, isNull, max, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { boards, cards, fieldPhaseSettings, fields, phases, rules } from "@/db/schema";
-import { emitirEventoConfig, garantirIndiceExclusivo, type Actor, type Tx } from "@/core";
+import { emitirEventoConfig, garantirIndiceExclusivo, recalcularTitulos, type Actor, type Tx } from "@/core";
+import { normalizarValidacao } from "@/lib/validacao";
 import { parse } from "@/lib/expr";
 import { ErroConfigCampo, expressoesDaConfig, normalizarConfig, TIPOS_VALIDOS, type ContextoConfig } from "@/lib/config-campos";
 import { slugCampo, slugLivre } from "@/lib/slug";
@@ -128,6 +129,8 @@ export interface DadosCampo {
   unico?: boolean;
   ajuda?: string;
   titulo?: boolean;
+  /** Formato (regex) e mensagem, para campos de texto. */
+  validacao?: { regex?: string; message?: string; description?: string } | null;
 }
 
 async function contextoConfig(tx: Tx, a: Alvo): Promise<ContextoConfig> {
@@ -166,9 +169,16 @@ function prepararCampo(d: DadosCampo, ctx: ContextoConfig) {
     throw e;
   }
   for (const x of expressoesDaConfig(config)) validarExpr(x.fonte, x.onde);
+  let validacao: ReturnType<typeof normalizarValidacao>;
+  try {
+    validacao = normalizarValidacao(d.validacao);
+  } catch (e) {
+    throw new ErroConfig((e as Error).message);
+  }
   return {
     nome,
     config,
+    validacao,
     requiredExpr: validarExpr(d.requiredExpr, "obrigatório se"),
     visibleExpr: validarExpr(d.visibleExpr, "visível se"),
     defaultValueExpr: validarExpr(d.defaultValueExpr, "valor padrão"),
@@ -202,10 +212,14 @@ export async function criarCampo(a: Alvo, d: DadosCampo) {
         defaultValueExpr: p.defaultValueExpr,
         uniqueValue: d.unico === true,
         helpText: d.ajuda?.trim() || null,
+        validation: p.validacao,
         position: (m ?? -1) + 1,
       })
       .returning();
-    if (d.titulo) await tx.update(boards).set({ titleFieldId: f.id }).where(eq(boards.id, a.boardId));
+    if (d.titulo) {
+      await tx.update(boards).set({ titleFieldId: f.id }).where(eq(boards.id, a.boardId));
+      await recalcularTitulos({ boardId: a.boardId, actor: a.actor }, { tx });
+    }
     if ((p.config.relation as { exclusive?: boolean } | undefined)?.exclusive) await garantirIndiceExclusivo(tx, f.id);
     await registrar(tx, a, "field", "created", f.id, { slug, type: d.tipo, config: p.config });
     return f;
@@ -235,9 +249,12 @@ export async function editarCampo(a: Alvo, fieldId: string, d: DadosCampo) {
       defaultValueExpr: p.defaultValueExpr,
       uniqueValue: d.unico === true,
       helpText: d.ajuda?.trim() || null,
+      validation: p.validacao,
     };
     await tx.update(fields).set(novo).where(eq(fields.id, fieldId));
     if (d.titulo && b.titleFieldId !== fieldId) await tx.update(boards).set({ titleFieldId: fieldId }).where(eq(boards.id, a.boardId));
+    // Título derivado muda quando muda o campo de título (ou o valor dele, se é o próprio campo editado).
+    if (d.titulo || b.titleFieldId === fieldId) await recalcularTitulos({ boardId: a.boardId, actor: a.actor }, { tx });
     if ((p.config.relation as { exclusive?: boolean } | undefined)?.exclusive) await garantirIndiceExclusivo(tx, fieldId);
     await registrar(tx, a, "field", "updated", fieldId, {
       antes: { slug: atual.slug, type: atual.type, config: atual.config },

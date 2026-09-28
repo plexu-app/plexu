@@ -22,6 +22,7 @@ import {
   type VistaCard,
 } from "./meta";
 import { compilar, montarContexto, registrosDe } from "./rules";
+import { validarFormato } from "../lib/validacao";
 import { CoreError, ehUuid, type CardRow, type Tx } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -90,8 +91,8 @@ export async function validarValor(op: Op, q: Quadro, c: Campo, v: unknown): Pro
     case "long_text": {
       if (typeof v !== "string") throw invalido(c, "texto esperado");
       limites(c, v.length, "tamanho");
-      const re = c.validation?.regex;
-      if (typeof re === "string" && !new RegExp(re).test(v)) throw invalido(c, "formato inválido");
+      const formato = validarFormato(c, v);
+      if (formato) throw invalido(c, formato);
       return v;
     }
     case "number": {

@@ -1,5 +1,5 @@
 // API pública do core. Canais (UI, API, import, automação) escrevem em cards só por aqui.
-export { createCard, deleteCard, linkCards, moveCard, restoreCard, unlinkCards, updateFields } from "./cards";
+export { createCard, deleteCard, linkCards, moveCard, recalcularTitulos, restoreCard, unlinkCards, updateFields } from "./cards";
 export type { CreateCardInput, DeleteCardInput, LinkInput, MoveCardInput, RestoreCardInput, UpdateFieldsInput } from "./cards";
 export { addComment, LIMITE_COMENTARIO } from "./comments";
 export type { AddCommentInput } from "./comments";

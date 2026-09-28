@@ -52,6 +52,7 @@ Tudo é referenciado por `key`, nunca por UUID. A key de campo é o identificado
 | `help` | texto de ajuda |
 | `required`, `visible`, `default` | expressões CEL (`"true"` = sempre obrigatório). Ver `docs/EXPRESSOES.md` |
 | `unique` | valor único no board |
+| `validation` | formato de campos de texto: `{ "regex", "message", "description" }`. Validado no formulário (mensagem abaixo do campo) e no servidor; sem `message`, aparece "Formato inválido. Esperado: <description ou regex>" |
 | `fill_phases`, `editable_everywhere` | decisão 18-revisada: keys das fases onde o campo é preenchido; editável em qualquer fase depois da primeira |
 | `options` | `select` / `multi_select` |
 | `currency` | `{ "code": "BRL" }` |
@@ -110,6 +111,8 @@ Fases (ordem, final, destinos permitidos), campos (tipo, obrigatório, editável
 | `statement` | ignorado (texto fixo do formulário) |
 | `connector` | `relation`; "1 card" → `cardinality: one`. O conversor nunca marca `exclusive`: exclusividade só por opção explícita no template |
 | campo na fase X; "editável em outras fases"; obrigatório | `fill_phases: [X]`; `editable_everywhere`; `required: "true"` (vale para sair da fase) |
+| regex de validação (`custom_validation`) em campo de texto | `validation.regex` (âncoras `\A`/`\z` viram `^`/`$`) com o texto de ajuda como `validation.message`; regex que não compila em JavaScript vai para "Não representado" |
+| título do pipe | `title_field`: o campo marcado como título; senão o primeiro texto obrigatório; senão o primeiro texto |
 | start form | campos da primeira fase |
 | fase "final" | `terminal` |
 | destinos permitidos restritos | regra `can_enter` com `fase_origem`/`fase_destino` |

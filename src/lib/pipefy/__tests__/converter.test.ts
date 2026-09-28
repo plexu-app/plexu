@@ -1,7 +1,7 @@
 // Conversor Pipefy → template com um export FICTÍCIO (pedidos com itens), montado aqui.
 import { describe, expect, it } from "vitest";
 import { validarTemplate } from "../../template";
-import { anonimizarExports, converterPipefy, semParenteses } from "../converter";
+import { anonimizarExports, converterPipefy, regexDoPipefy, semParenteses } from "../converter";
 import type { PfAutomacao, PfCampo, PfExport } from "../export";
 import { relatorioMarkdown } from "../relatorio";
 
@@ -24,7 +24,7 @@ const ITENS: PfExport = {
     name: "Itens do pedido",
     title_field: { id: "descricao" },
     table_fields: [
-      campo("descricao", "900", "Descrição", "short_text"),
+      campo("descricao", "900", "Descrição", "short_text", { required: true, custom_validation: "\\A[A-Z0-9]+\\z", help: "Código em maiúsculas, sem espaços." }),
       campo("valor", "901", "Valor", "currency"),
       campo("aprovado", "902", "Aprovado", "radio_vertical", { options: ["Sim", "Não"] }),
       campo("cnpj_pedido", "903", "CNPJ do pedido", "cnpj"),
@@ -71,6 +71,18 @@ const PEDIDOS: PfExport = {
       campo("aviso", "4", "Leia antes", "statement"),
       campo("fornecedor", "5", "Fornecedor", "connector", { connectedRepo: { id: "3003", name: "Fornecedores" }, canConnectMultiples: false }),
       campo("principal", "6", "Item principal", "connector", { connectedRepo: { id: "2002", name: "Itens do pedido" }, canConnectMultiples: false }),
+      campo("marcadores", "7", "Marcadores", "label_select"),
+      campo("justificativa", "8", "Justificativa", "long_text"),
+    ],
+    labels: [{ id: "77", name: "Urgente" }, { id: "78", name: "Rotina" }],
+    // No Pipefy, a condição sobre etiquetas compara o id da etiqueta
+    startFormFieldConditions: [
+      {
+        id: "fc0",
+        name: "Justificativa se urgente",
+        condition: { expressions: [{ structure_id: "0", field_address: "7", operation: "equals", value: "77" }], expressions_structure: [["0"]] },
+        actions: [{ actionId: "show", whenEvaluator: true, phaseField: { id: "justificativa" } }],
+      },
     ],
     phases: [
       {
@@ -202,7 +214,7 @@ describe("converterPipefy", () => {
     const r = relatorio.boards[0];
     expect(r.conexoes.find((c) => c.campo === "Fornecedor")?.destino).toMatch(/não convertida/);
     expect(r.naoRepresentado.map((n) => n.item)).toEqual(expect.arrayContaining(["Leia antes", "Fornecedor"]));
-    expect(r.condicionais).toEqual({ total: 1, convertidas: 1, naoConvertidas: [] });
+    expect(r.condicionais).toEqual({ total: 2, convertidas: 2, naoConvertidas: [] });
     const md = relatorioMarkdown(relatorio);
     expect(md).toContain("14 automações no Pipefy");
     expect(md).toContain("| Pedidos de compra (pipe) |");
@@ -225,6 +237,40 @@ describe("converterPipefy", () => {
     const antes = JSON.stringify(PEDIDOS);
     anonimizarExports([PEDIDOS]);
     expect(JSON.stringify(PEDIDOS)).toBe(antes);
+  });
+});
+
+describe("formato e título", () => {
+  it("regex do Pipefy vira validation com o texto de ajuda como mensagem (âncoras Ruby → JS)", () => {
+    const itens = board("itens-do-pedido");
+    expect(itens.fields.find((f) => f.key === "descricao")).toMatchObject({
+      help: "Código em maiúsculas, sem espaços.",
+      validation: { regex: "^[A-Z0-9]+$", message: "Código em maiúsculas, sem espaços." },
+    });
+    expect(regexDoPipefy("^[A-Z ]+$")).toBe("^[A-Z ]+$");
+    expect(regexDoPipefy("([")).toBeNull();
+  });
+
+  it("condição sobre etiqueta compara pelo nome (o Pipefy usa o id da etiqueta)", () => {
+    const p = board("pedidos-de-compra");
+    expect(p.fields.find((f) => f.key === "marcadores")).toMatchObject({ type: "multi_select", options: ["Urgente", "Rotina"] });
+    expect(p.fields.find((f) => f.key === "justificativa")?.visible).toBe('card.marcadores != null && "Urgente" in card.marcadores');
+  });
+
+  it("sem título marcado no Pipefy: primeiro texto obrigatório", () => {
+    const semTitulo: PfExport = {
+      ...ITENS,
+      id: "4004",
+      repo: {
+        ...ITENS.repo,
+        id: "4004",
+        name: "Cadastro",
+        title_field: null,
+        table_fields: [campo("obs", "950", "Observação", "short_text"), campo("nome", "951", "Nome", "short_text", { required: true })],
+      },
+      automacoes: [],
+    };
+    expect(converterPipefy([semTitulo]).template.boards[0].title_field).toBe("nome");
   });
 });
 

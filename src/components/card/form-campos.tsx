@@ -3,7 +3,7 @@
 // com seus próprios formulários); por isso os inputs ficam fora do <form> e se ligam a ele pelo
 // atributo HTML form, sem formulários aninhados.
 import { useRouter } from "next/navigation";
-import { useId, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { Calculator, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { salvarCamposAction } from "@/app/w/[ws]/actions";
@@ -12,9 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/input";
 import { Badge } from "@/components/ui/misc";
 import { formatarValor } from "@/lib/formatar";
+import { nomeInput } from "@/lib/form-campos";
+import { validarFormato } from "@/lib/validacao";
 
 export interface CampoForm {
-  campo: { id: string; name: string; type: string; config: Record<string, unknown>; helpText: string | null };
+  campo: { id: string; name: string; type: string; config: Record<string, unknown>; helpText: string | null; validation?: Record<string, unknown> | null };
   valor: unknown;
   estado?: { visivel: boolean; editavel: boolean; obrigatorio: boolean; calculado: boolean; travado: boolean; erro?: string };
 }
@@ -38,6 +40,7 @@ export function FormCampos({
   const router = useRouter();
   const formId = `campos-${useId().replace(/:/g, "")}`;
   const [pendente, iniciar] = useTransition();
+  const [erros, setErros] = useState<Record<string, string>>({});
   const mapaPessoas = new Map(Object.entries(pessoas));
   const editaveis = campos.filter((c) => c.campo.type !== "relation" && c.estado?.editavel !== false && !c.estado?.calculado);
 
@@ -85,7 +88,12 @@ export function FormCampos({
                 {formatarValor(campo, valor, mapaPessoas) || <span className="text-muted-foreground">—</span>}
               </div>
             )}
-            {faltando && <p className="mt-1 text-xs text-destructive">Obrigatório nesta fase</p>}
+            {erros[campo.id] && (
+              <p className="mt-1 text-xs text-destructive-strong" role="alert" data-erro-campo>
+                {erros[campo.id]}
+              </p>
+            )}
+            {faltando && !erros[campo.id] && <p className="mt-1 text-xs text-destructive">Obrigatório nesta fase</p>}
             {campo.helpText && <p className="mt-1 text-xs text-muted-foreground">{campo.helpText}</p>}
             {estado?.erro && <p className="mt-1 text-xs text-destructive">Expressão do campo com erro: {estado.erro}</p>}
           </div>
@@ -95,6 +103,23 @@ export function FormCampos({
         <form
           id={formId}
           className="col-span-2 flex justify-end"
+          onSubmit={(ev) => {
+            // Formato (regex) com a mensagem do campo, antes de enviar — não só a validação nativa.
+            const form = new FormData(ev.currentTarget);
+            const e: Record<string, string> = {};
+            for (const c of editaveis) {
+              const msg = validarFormato(c.campo, String(form.get(nomeInput(c.campo.id)) ?? "").trim());
+              if (msg) e[c.campo.id] = msg;
+            }
+            setErros(e);
+            const primeiro = Object.keys(e)[0];
+            if (!primeiro) return;
+            ev.preventDefault();
+            toast.error("Corrija o formato dos campos destacados.");
+            const el = document.getElementById(`campo-${primeiro}`);
+            el?.scrollIntoView({ block: "center", behavior: "smooth" });
+            el?.focus({ preventScroll: true });
+          }}
           action={(form) =>
             iniciar(async () => {
               const r = await salvarCamposAction(ws, board, cardId, form);

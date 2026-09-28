@@ -96,3 +96,37 @@ test("modal de criação: relação N:1 com busca; obrigatório faltando é dest
   await page.waitForURL(/\/c\/[0-9a-f-]{36}$/);
   await expect(page.getByTestId("coluna-atual").locator('[data-campo="Fornecedor"]').getByRole("link", { name: "Construtora Beta" })).toBeVisible();
 });
+
+test("formato (regex): erro abaixo do campo com a mensagem configurada, ajuda sempre visível", async ({ page }) => {
+  await entrar(page);
+  const configurar = async (regex: string, mensagem: string, ajuda: string) => {
+    await page.goto("/w/demo/b/contratos/settings?aba=campos");
+    await page.getByRole("button", { name: "Editar Contratante" }).click();
+    const m = page.getByRole("dialog", { name: /Editar campo/ });
+    await m.getByLabel("Texto de ajuda").fill(ajuda);
+    await m.getByText("Avançado").click();
+    await m.getByLabel("Formato (regex)").fill(regex);
+    await m.getByLabel("Mensagem de formato").fill(mensagem);
+    await m.getByRole("button", { name: "Salvar campo" }).click();
+    await expect(m).toBeHidden();
+  };
+  await configurar("^[A-Z]+$", "Use só letras maiúsculas, sem espaços.", "Nome curto do contratante.");
+  try {
+    await page.goto("/w/demo/b/contratos");
+    await page.getByRole("button", { name: "Novo card", exact: true }).click();
+    const modal = page.getByRole("dialog", { name: "Novo card" });
+    const contratante = modal.locator('[data-campo-novo="Contratante"]');
+    await modal.getByLabel("Objeto").fill("Contrato com formato (e2e)");
+    await contratante.getByRole("textbox").fill("ACME LTDA");
+    await modal.getByRole("button", { name: "Criar card" }).click();
+    await expect(contratante.locator("[data-erro-campo]")).toHaveText("Use só letras maiúsculas, sem espaços.");
+    await expect(contratante.getByText("Nome curto do contratante.")).toBeVisible();
+    await expect(contratante).toHaveAttribute("data-destaque", "true");
+    await expect(contratante.getByRole("textbox")).toBeFocused();
+    await contratante.getByRole("textbox").fill("ACME");
+    await modal.getByRole("button", { name: "Criar card" }).click();
+    await page.waitForURL(/\/c\/[0-9a-f-]{36}$/);
+  } finally {
+    await configurar("", "", "");
+  }
+});
