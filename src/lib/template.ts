@@ -58,7 +58,8 @@ export interface CampoTemplate {
   rollup?: { via: string; agg: "count" | "sum" | "avg" | "min" | "max"; expr?: string; filter?: string; format?: "currency" };
   dynamic_text?: { template: string };
   /** Valor de card relacionado. via como em rollup; path: slug do campo lá (ou titulo, fase, status). */
-  lookup?: { via: string; path: string; mode?: "ref" | "copy" };
+  /** editable_writeback (só "ref"): editar o espelho grava no card de origem. */
+  lookup?: { via: string; path: string; mode?: "ref" | "copy"; editable_writeback?: boolean };
   phase_settings?: AjusteFaseTemplate[];
 }
 
@@ -185,6 +186,7 @@ export function validarTemplate(t: Template, externos: Iterable<string> = []): E
         if (!rel || rel.type !== "relation") err(oc, `lookup.via não é uma relação: ${via}`);
         else if (bk !== b.key && rel.relation?.board !== b.key) err(oc, `lookup.via ${via} não aponta para este board`);
         if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(c.lookup?.path ?? "")) err(oc, "lookup.path deve ser o identificador de um campo do card relacionado");
+        if (c.lookup?.editable_writeback && c.lookup.mode === "copy") err(oc, "lookup.editable_writeback só vale com mode \"ref\"");
       }
       if (c.type === "dynamic_text") {
         if (!c.dynamic_text?.template) err(oc, "dynamic_text sem template");

@@ -169,7 +169,7 @@ Fonte: levantamento de telas de configuração + metadados via API. Observação
 | Achado | Decisão | Camada |
 |---|---|---|
 | 21 tipos de campo; `cpf`/`cnpj` só via API; sem valor padrão; máscara só implícita; unicidade não exposta na API para pipes | Catálogo de tipos com contrato único UI=API: + `cpf`, `cnpj`, `cep`, `pix`; **valor padrão** (fixo ou expressão) e **máscara** em todo tipo; unicidade em qualquer board | C1 |
-| Conexão avançada: filho obrigatório p/ pai finalizar; pai só avança com filhos em fase final; autopreencher do conectado | Já coberto por regras sobre filhos. Autopreencher = campo `lookup` com modo **cópia** (snapshot) ou **referência** (live). Resolve "contratante defasado" | C1 |
+| Conexão avançada: filho obrigatório p/ pai finalizar; pai só avança com filhos em fase final; autopreencher do conectado | Já coberto por regras sobre filhos. Autopreencher = campo `lookup` com modo **cópia** (snapshot), **referência** (live) ou **referência editável** (`editable_writeback`: editar o espelho grava no card de origem, com as regras de lá). Resolve "contratante defasado" | C1 |
 | 73 condicionais mostrar/ocultar por campo | Visibilidade de campo = expressão, mesma engine das regras | C1 |
 | 10 gatilhos (inclui `card_left_phase`, `sla_based`, `card_inbox_received_email`, `all_children_in_phase`, `http_response_received`, `manually_triggered`) | Adotar todos + `card_deleted`, `relation_changed`, `approval_decided`, `comment_added`, `cron` | C1 |
 | Operadores de data (hoje/ontem/semana/mês/ano atual e anterior); texto sem regex; select sem "está em" | Set completo: comparação, `in`, `between`, regex, relativos a hoje (`± N dias/úteis`), funções de data | C1 |
