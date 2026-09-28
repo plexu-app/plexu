@@ -13,6 +13,10 @@ export const workspaces = pgTable("workspaces", {
   name: text("name").notNull(),
   settings: jsonb("settings").notNull().default({}),
   createdAt: ts("created_at").notNull().defaultNow(),
+  /** Arquivado: some das listas, dados intactos, restaurável pelo owner. */
+  archivedAt: ts("archived_at"),
+  /** Excluído: lápide (os dados foram removidos; a linha fica para os eventos). */
+  deletedAt: ts("deleted_at"),
 });
 
 export const users = pgTable("users", {
@@ -220,6 +224,8 @@ export const events = pgTable("events", {
   actorId: uuid("actor_id"),
   data: jsonb("data").notNull(),
   occurredAt: ts("occurred_at").notNull().defaultNow(),
+  /** Marca de auditoria gravada ao excluir o workspace (única mudança permitida em events). */
+  workspaceDeletedAt: ts("workspace_deleted_at"),
 }, (t) => [index("events_card_idx").on(t.cardId, t.occurredAt)]);
 
 export const views = pgTable("views", {

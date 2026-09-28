@@ -24,7 +24,8 @@ export type CodigoCore =
   | "relacao_exclusiva"
   | "relacao_invalida"
   | "sequencia"
-  | "ator_invalido";
+  | "ator_invalido"
+  | "sem_permissao";
 
 export class CoreError extends Error {
   readonly codigo: CodigoCore;
