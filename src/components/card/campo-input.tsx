@@ -83,6 +83,13 @@ export function CampoInput({ campo, valor, pessoas, id, obrigatorio, compacto, f
           ))}
         </NativeSelect>
       );
+    case "attachment":
+      // Upload de anexos ainda não existe: sem caixa de texto (o core só aceita ids de anexo).
+      return (
+        <p id={id} className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground" data-anexo-indisponivel>
+          {Array.isArray(valor) && valor.length ? `${valor.length} anexo(s). ` : ""}Envio de anexos ainda não disponível nesta versão.
+        </p>
+      );
     case "cpf":
     case "cnpj":
       return <Input {...comum} defaultValue={formatarValor(campo, valor)} />;
