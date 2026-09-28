@@ -4,9 +4,11 @@ import { corDaFase, montarCartoes } from "@/components/kanban-dados";
 import { TabelaBoard } from "@/components/tabela-board";
 import { colunasDaTabela, linhasDaTabela } from "@/lib/tabela";
 import { cardsDoBoard, membrosDoWorkspace, type BoardCompleto } from "@/server/consultas";
+import { comTitulosDosEspelhos } from "@/server/espelhos";
 
 export async function VistaKanban({ ws, wsId, board }: { ws: string; wsId: string; board: BoardCompleto }) {
-  const [lista, membros] = await Promise.all([cardsDoBoard(board.id), membrosDoWorkspace(wsId)]);
+  const [crus, membros] = await Promise.all([cardsDoBoard(board.id), membrosDoWorkspace(wsId)]);
+  const lista = await comTitulosDosEspelhos(wsId, board, crus);
   const hoje = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
   const cards = montarCartoes(lista, board.campos, {
     titleFieldId: board.titleFieldId,
@@ -20,7 +22,8 @@ export async function VistaKanban({ ws, wsId, board }: { ws: string; wsId: strin
 }
 
 export async function VistaTabela({ ws, wsId, board }: { ws: string; wsId: string; board: BoardCompleto }) {
-  const [cards, membros] = await Promise.all([cardsDoBoard(board.id), membrosDoWorkspace(wsId)]);
+  const [crus, membros] = await Promise.all([cardsDoBoard(board.id), membrosDoWorkspace(wsId)]);
+  const cards = await comTitulosDosEspelhos(wsId, board, crus);
   const campos = board.campos.filter((c) => c.type !== "relation");
   const colunas = colunasDaTabela(campos, board.titleFieldId, board.fases.length > 0);
   const linhas = linhasDaTabela(

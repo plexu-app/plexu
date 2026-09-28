@@ -21,6 +21,8 @@ export function RelacaoNaCriacao({
   id,
   obrigatorio,
   aoMudar,
+  inicial = [],
+  form,
 }: {
   ws: string;
   /** Board do card que está sendo criado (a busca usa o alvo da relação configurada nele). */
@@ -29,8 +31,12 @@ export function RelacaoNaCriacao({
   id: string;
   obrigatorio?: boolean;
   aoMudar: () => void;
+  /** Cards já escolhidos (edição de um espelho de relação). */
+  inicial?: Item[];
+  /** id do <form> dono dos inputs, quando ficam fora dele. */
+  form?: string;
 }) {
-  const [escolhidos, setEscolhidos] = useState<Item[]>([]);
+  const [escolhidos, setEscolhidos] = useState<Item[]>(inicial);
   const [aberto, setAberto] = useState(false);
   const unico = (campo.config.relation as { cardinality?: string } | undefined)?.cardinality === "one" || !!(campo.config.relation as { is_parent?: boolean } | undefined)?.is_parent;
   const chave = escolhidos.map((e) => e.id).join(",");
@@ -44,8 +50,10 @@ export function RelacaoNaCriacao({
 
   return (
     <div className="flex flex-col gap-2">
+      {/* Marcador vazio: permite enviar "nenhum card" (limpar). */}
+      <input type="hidden" name={nomeInput(campo.id)} value="" form={form} />
       {escolhidos.map((e) => (
-        <input key={e.id} type="hidden" name={nomeInput(campo.id)} value={e.id} />
+        <input key={e.id} type="hidden" name={nomeInput(campo.id)} value={e.id} form={form} />
       ))}
       {escolhidos.length > 0 && (
         <ul className="flex flex-wrap gap-2">

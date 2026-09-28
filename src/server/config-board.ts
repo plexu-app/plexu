@@ -405,7 +405,7 @@ export async function ativarRegra(a: Alvo, ruleId: string, enabled: boolean) {
 // ---------------------------------------------------------------------------
 
 export async function dadosConfiguracao(wsId: string, boardId: string) {
-  const [regras, ajustes, bs, relsParaCa] = await Promise.all([
+  const [regras, ajustes, bs, relsParaCa, camposWs] = await Promise.all([
     db.select().from(rules).where(eq(rules.boardId, boardId)).orderBy(asc(rules.position)),
     db
       .select({ fieldId: fieldPhaseSettings.fieldId, phaseId: fieldPhaseSettings.phaseId, visible: fieldPhaseSettings.visible, editable: fieldPhaseSettings.editable, required: fieldPhaseSettings.required })
@@ -426,8 +426,15 @@ export async function dadosConfiguracao(wsId: string, boardId: string) {
           ne(fields.boardId, boardId),
         ),
       ),
+    // Campos de todos os boards do workspace: o lookup escolhe o campo do card relacionado por nome.
+    db
+      .select({ boardId: fields.boardId, slug: fields.slug, name: fields.name, type: fields.type })
+      .from(fields)
+      .innerJoin(boards, eq(boards.id, fields.boardId))
+      .where(and(eq(boards.workspaceId, wsId), isNull(fields.archivedAt)))
+      .orderBy(asc(fields.position)),
   ]);
-  return { regras, ajustes, boards: bs, relacoesEntrando: relsParaCa };
+  return { regras, ajustes, boards: bs, relacoesEntrando: relsParaCa, camposWs };
 }
 
 // ---------------------------------------------------------------------------
