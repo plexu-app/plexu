@@ -6,6 +6,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { addComment, CoreError, createCard, deleteCard, linkCards, moveCard, unlinkCards, updateFields } from "@/core";
 import { exigirBoard, exigirCard, exigirConfigurador, exigirMembro } from "@/server/acesso";
 import { criarFilho } from "@/server/cards";
+import { origemDoEspelho } from "@/server/espelhos";
 import { criarBoard, ErroConfig } from "@/server/config";
 import { ajustesDoBoard } from "@/server/config-board";
 import { boardPorId, buscarCards, cardDoWorkspace, type BoardCompleto } from "@/server/consultas";
@@ -87,7 +88,12 @@ export async function salvarCamposAction(ws: string, board: string, cardId: stri
   const b = await exigirBoard(ctx, board);
   await exigirCard(b, cardId);
   const ids = new Set(form.getAll("campos").map(String));
-  const campos = b.campos.filter((c) => ids.has(c.id) && c.type !== "relation" && !TIPOS_CALCULADOS_UI.has(c.type));
+  const campos: { id: string; type: string }[] = b.campos.filter((c) => ids.has(c.id) && c.type !== "relation" && !TIPOS_CALCULADOS_UI.has(c.type));
+  // Espelhos editáveis: o valor é interpretado pelo tipo do campo de origem (o core grava lá).
+  for (const c of b.campos.filter((x) => ids.has(x.id) && x.type === "lookup")) {
+    const o = await origemDoEspelho(ctx.ws.id, b, c);
+    if (o?.editavel) campos.push({ id: c.id, type: o.campo.type });
+  }
   const r = await tentar(() => updateFields({ cardId, props: propsDoForm(form, campos), actor: ctx.actor }));
   revalidatePath(caminhoBoard(ws, board), "layout");
   return r;
@@ -97,7 +103,13 @@ export async function salvarCamposAction(ws: string, board: string, cardId: stri
 export async function buscarRelacionaveisAction(ws: string, board: string, fieldId: string, termo: string, excluir: string[]) {
   const ctx = await exigirMembro(ws);
   const b = await exigirBoard(ctx, board);
-  const campo = b.campos.find((c) => c.id === fieldId && c.type === "relation");
+  let campo = b.campos.find((c) => c.id === fieldId && c.type === "relation");
+  // Espelho de relação: busca no board alvo da relação de origem.
+  const espelho = b.campos.find((c) => c.id === fieldId && c.type === "lookup");
+  if (!campo && espelho) {
+    const o = await origemDoEspelho(ctx.ws.id, b, espelho);
+    if (o?.editavel && o.campo.type === "relation") campo = o.campo;
+  }
   const alvo = campo ? alvoDe(campo.config) : "";
   if (!alvo || !(await boardPorId(ctx.ws.id, alvo))) return [];
   return buscarCards(ctx.ws.id, alvo, String(termo).slice(0, 100), excluir.slice(0, 500));

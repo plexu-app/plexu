@@ -43,6 +43,8 @@ export interface RelatorioBoard {
   conexoes: { campo: string; alvo: string; destino: string }[];
   condicionais: { total: number; convertidas: number; naoConvertidas: string[] };
   naoRepresentado: { item: string; motivo: string }[];
+  /** Pontos convertidos com ressalva, para revisar. */
+  avisos: string[];
   /** Regras vindas de automações. */
   regras: number;
   /** Regras vindas da configuração de fases/conexões (destinos permitidos, filho obrigatório). */
@@ -316,6 +318,7 @@ class Conversor {
         conexoes: [],
         condicionais: { total: 0, convertidas: 0, naoConvertidas: [] },
         naoRepresentado: [],
+        avisos: [],
         regras: 0,
         regrasConfig: 0,
         rollups: 0,
@@ -729,6 +732,15 @@ class Conversor {
         continue;
       }
 
+      // "Preencher automaticamente" de uma conexão (copia %{conexão.campo} para este card) → lookup.
+      const auto = this.autoPreenchimento(b, a);
+      if (auto) {
+        linha.destino = "lookup";
+        linha.ref = auto.ref;
+        linha.nota = auto.nota;
+        continue;
+      }
+
       // Cópia de um campo deste card para o card filho da série → lookup "ref" no filho.
       const lookupFilho = this.copiaDoPai(b, a);
       if (lookupFilho) {
@@ -800,6 +812,57 @@ class Conversor {
         if (linhas.length > 1) l.nota = `agrupada: ${linhas.length} automações → 1 pendente`;
       }
     }
+  }
+
+  /**
+   * "Preencher automaticamente" de conexão: a configuração do Pipefy (autoFillFields) só sai da API
+   * com um card de origem, então é inferida da automação update_card_field no próprio card que copia
+   * %{<conexão>.<campo do card conectado>}. O campo vira lookup pela conexão: "ref" (espelho, sempre
+   * igual à origem); se era editável no Pipefy, "copy" (pode divergir) com aviso no relatório.
+   */
+  autoPreenchimento(b: BoardConv, a: PfAutomacao): { ref: string; nota: string } | null {
+    if (a.action_id !== "update_card_field" || a.action_repo_v2?.id !== b.exp.repo.id) return null;
+    const fms = a.action_params?.field_map ?? [];
+    if (!fms.length) return null;
+    const pares = fms.map((fm) => {
+      const m = (fm.value ?? "").trim().match(/^%\{([^}|.]+)\.([^}|.]+)\}$/);
+      const con = m ? b.porRef.get(m[1]) : undefined;
+      if (!m || !con?.campo || con.serie || con.campo.type !== "relation") return null;
+      const alvo = this.porRepo.get(con.pf.connectedRepo?.id ?? "");
+      const origem = alvo?.porRef.get(m[2])?.campo;
+      const destino = b.porRef.get(fm.fieldId);
+      if (!origem || !destino?.campo || destino.serie || destino.campo === con.campo) return null;
+      return { rel: con.campo, alvo: alvo!, origem, destino };
+    });
+    if (pares.some((p) => !p)) return null;
+    const notas: string[] = [];
+    for (const p of pares) {
+      const { rel, alvo, origem, destino } = p!;
+      const c = destino.campo!;
+      const editavel = destino.pf.editable === true;
+      const mode = editavel ? "copy" : "ref";
+      if (c.type !== "lookup") {
+        delete c.required;
+        delete c.editable_everywhere;
+        delete c.currency;
+        delete c.options;
+        delete c.validation;
+        c.type = "lookup";
+        c.lookup = { via: rel.key, path: origem.key, mode };
+        b.rel.lookups++;
+        const l = b.rel.campos.find((x) => x.destino === c.key);
+        if (l) {
+          l.tipoDestino = "lookup";
+          l.nota = [l.nota, `preenchido de ${rel.key}.${origem.key} (${editavel ? "cópia" : "espelho"})`].filter(Boolean).join("; ");
+        }
+        if (editavel)
+          b.rel.avisos.push(
+            `${c.name}: preenchido automaticamente de ${alvo.tpl.name}.${origem.name}, mas editável no Pipefy → lookup cópia (pode divergir da origem). Se a edição deve alterar a origem, troque por espelho editável (mode "ref" + editable_writeback).`,
+          );
+      }
+      notas.push(`${c.key} ${editavel ? "copia" : "espelha"} ${alvo.tpl.name}.${origem.key} pela conexão ${rel.key}`);
+    }
+    return { ref: pares.map((p) => p!.destino.campo!.key).join(", "), nota: notas.join("; ") };
   }
 
   /**

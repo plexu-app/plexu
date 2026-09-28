@@ -46,9 +46,17 @@ export default async function Configuracoes({ params, searchParams }: { params: 
   const d = await dadosConfiguracao(ctx.ws.id, b.id);
   const fases = b.fases.map((f) => ({ id: f.id, name: f.name, isTerminal: f.isTerminal, color: f.color }));
   const condicoes = camposCondicao(b);
+  // Campos do card do outro lado de cada relação (board alvo, ou o board da relação que aponta para cá).
+  const camposDe = (boardId: string) => d.camposWs.filter((c) => c.boardId === boardId).map(({ slug, name, type }) => ({ slug, name, type }));
+  const nomeBoard = (id: string) => d.boards.find((x) => x.id === id)?.name ?? "";
   const relacoesVia = [
-    ...b.campos.filter((c) => c.type === "relation").map((c) => ({ id: c.id, rotulo: `${c.name} (deste board)` })),
-    ...d.relacoesEntrando.map((r) => ({ id: r.id, rotulo: `${r.boardName} · ${r.name}` })),
+    ...b.campos
+      .filter((c) => c.type === "relation")
+      .map((c) => {
+        const alvo = String((c.config.relation as { target_board?: string } | undefined)?.target_board ?? "");
+        return { id: c.id, rotulo: `${c.name} (deste board)`, nome: c.name, board: nomeBoard(alvo), campos: camposDe(alvo) };
+      }),
+    ...d.relacoesEntrando.map((r) => ({ id: r.id, rotulo: `${r.boardName} · ${r.name}`, nome: r.name, board: r.boardName, campos: camposDe(r.boardId) })),
   ];
   const base = `/w/${ws}/b/${b.slug}/settings`;
   return (

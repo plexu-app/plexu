@@ -4,11 +4,12 @@
 // atributo HTML form, sem formulários aninhados.
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
-import { Calculator, Lock } from "lucide-react";
+import { Calculator, Link2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { salvarCamposAction } from "@/app/w/[ws]/actions";
 import type { AnexoMeta } from "@/components/card/campo-anexos";
 import { CampoInput } from "@/components/card/campo-input";
+import { RelacaoNaCriacao } from "@/components/card/relacao-criacao";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/input";
 import { Badge } from "@/components/ui/misc";
@@ -19,7 +20,20 @@ import { validarFormato } from "@/lib/validacao";
 export interface CampoForm {
   campo: { id: string; name: string; type: string; config: Record<string, unknown>; helpText: string | null; validation?: Record<string, unknown> | null };
   valor: unknown;
-  estado?: { visivel: boolean; editavel: boolean; obrigatorio: boolean; calculado: boolean; travado: boolean; erro?: string };
+  estado?: {
+    visivel: boolean;
+    editavel: boolean;
+    obrigatorio: boolean;
+    calculado: boolean;
+    travado: boolean;
+    erro?: string;
+    motivo?: string;
+    espelho?: { cardId: string | null; campo: { id: string; name: string; type: string; config: Record<string, unknown> } };
+  };
+  /** Texto de exibição já resolvido (ex.: títulos dos cards de um espelho de relação). */
+  exibicao?: string;
+  /** Cards escolhidos, para editar um espelho de relação. */
+  inicialRelacao?: { id: string; title: string }[];
 }
 
 export function FormCampos({
@@ -50,7 +64,7 @@ export function FormCampos({
 
   return (
     <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-      {campos.map(({ campo, valor, estado }) => {
+      {campos.map(({ campo, valor, estado, exibicao, inicialRelacao }) => {
         if (campo.type === "relation") {
           const conteudo = relacoes[campo.id];
           return conteudo ? (
@@ -80,16 +94,35 @@ export function FormCampos({
                   <Lock className="size-3" /> travado
                 </Badge>
               )}
-              {!calculado && !estado?.travado && !editavel && <Badge variant="outline">somente leitura</Badge>}
+              {!calculado && !estado?.travado && !editavel && (
+                <Badge variant="outline" title={estado?.motivo} aria-label={estado?.motivo ? `somente leitura: ${estado.motivo}` : undefined} data-motivo={estado?.motivo}>
+                  somente leitura
+                </Badge>
+              )}
             </div>
-            {editavel ? (
-              <CampoInput campo={campo} valor={valor} pessoas={pessoas} id={idInput} obrigatorio={estado?.obrigatorio} form={formId} anexos={{ ws, board, meta: anexos }} />
+            {campo.type === "lookup" && estado?.espelho && (
+              <p className="-mt-1 mb-1.5 flex items-center gap-1 text-xs text-muted-foreground" data-origem-espelho>
+                <Link2 className="size-3" aria-hidden /> espelha “{estado.espelho.campo.name}” do card de origem{editavel ? " — editar aqui altera a origem" : ""}
+              </p>
+            )}
+            {editavel && estado?.espelho?.campo.type === "relation" ? (
+              <RelacaoNaCriacao ws={ws} board={board} campo={{ id: campo.id, name: campo.name, config: estado.espelho.campo.config }} id={idInput} form={formId} inicial={inicialRelacao} aoMudar={() => {}} />
+            ) : editavel ? (
+              <CampoInput
+                campo={estado?.espelho ? { ...campo, type: estado.espelho.campo.type, config: estado.espelho.campo.config } : campo}
+                valor={valor}
+                pessoas={pessoas}
+                id={idInput}
+                obrigatorio={estado?.obrigatorio}
+                form={formId}
+                anexos={{ ws, board, meta: anexos }}
+              />
             ) : (
               <div
                 id={idInput}
                 className={`min-h-9 rounded-md border px-3 py-2 text-sm ${calculado ? "border-dashed border-primary/30 bg-primary/5" : "bg-muted"}`}
               >
-                {formatarValor(campo, valor, mapaPessoas) || <span className="text-muted-foreground">—</span>}
+                {(exibicao ?? formatarValor(campo, valor, mapaPessoas)) ||<span className="text-muted-foreground">—</span>}
               </div>
             )}
             {erros[campo.id] && (

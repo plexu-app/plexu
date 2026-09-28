@@ -62,7 +62,7 @@ Tudo é referenciado por `key`, nunca por UUID. A key de campo é o identificado
 | `sequence` | `{ "pattern": "PC-{n}", "scope": "global"\|"year"\|"month"\|"day"\|"parent", "seed", "pad", "parent_field" }` |
 | `rollup` | `{ "via", "agg": "count"\|"sum"\|"avg"\|"min"\|"max", "expr", "filter", "format": "currency" }`. `via` é a key de uma relação deste board ou `"<board>.<campo>"` para uma relação de outro board que aponta para este |
 | `dynamic_text` | `{ "template": "{numero} · {card.global - card.pago}" }` |
-| `lookup` | valor de card relacionado: `{ "via", "path", "mode": "ref"|"copy" }`. `via` como em `rollup`; `path` é o identificador de um campo no card ligado (ou `titulo`, `fase`, `status`). `ref` acompanha o card ligado; `copy` grava o valor quando a ligação é criada ou trocada. Um card ligado → valor; vários → lista. Pode ser o título do board |
+| `lookup` | valor de card relacionado: `{ "via", "path", "mode": "ref"|"copy" }`. `via` como em `rollup`; `path` é o identificador de um campo no card ligado (ou `titulo`, `fase`, `status`). `ref` acompanha o card ligado; `copy` grava o valor quando a ligação é criada ou trocada. `"editable_writeback": true` (só com `ref`) torna o espelho editável: editar grava no card de origem pelo core, com as regras `can_edit` de lá, e todos os espelhos acompanham; fica somente leitura se não houver exatamente um card de origem ligado ou se a origem não puder ser editada. Um card ligado → valor; vários → lista. Pode ser o título do board |
 | `phase_settings` | exceções por fase: `[{ "phase", "visible", "editable", "required" }]` (`null` = sem exceção) |
 
 ### Automações (reservado)

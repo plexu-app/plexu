@@ -18,6 +18,7 @@ import { fasesValidas } from "@/lib/fases-preenchimento";
 import { descreverEvento, formatarDataHora, formatarValor, idCurto, TIPOS_CALCULADOS_UI, tituloOu, valorDoCard, type CampoFmt } from "@/lib/formatar";
 import { exigirBoard, exigirCard, exigirMembro } from "@/server/acesso";
 import { anexosPorIds } from "@/server/anexos/servico";
+import { origemDoEspelho } from "@/server/espelhos";
 import { ajustesDoBoard } from "@/server/config-board";
 import { camposDaFase, hojeSP, obrigatoriosPossiveis } from "../_lib/campos-da-fase";
 import {
@@ -110,7 +111,18 @@ export async function PainelCard({ ws, board, cardId, voltarPara }: { ws: string
     }))
     .filter((g) => g.itens.length > 0);
 
-  const camposForm = visiveis.filter((c) => !naEsquerda(c)).map((c) => ({ campo: c, valor: valorDoCard(c, card), estado: estado[c.id] }));
+  const camposForm: { campo: CampoUI; valor: unknown; estado: (typeof estado)[string]; exibicao?: string; inicialRelacao?: { id: string; title: string }[] }[] = visiveis
+    .filter((c) => !naEsquerda(c))
+    .map((c) => ({ campo: c, valor: valorDoCard(c, card), estado: estado[c.id] }));
+  // Espelhos de relação: o valor são ids de cards; mostrar/editar pelos títulos.
+  for (const f of camposForm.filter((x) => x.campo.type === "lookup")) {
+    const o = await origemDoEspelho(ctx.ws.id, b, f.campo);
+    if (o?.campo.type !== "relation") continue;
+    const ids = Array.isArray(f.valor) ? (f.valor as string[]) : [];
+    const t = await titulosDeCards(ids);
+    const itens = ids.map((id) => ({ id, title: t.get(id) ?? "" }));
+    Object.assign(f, { exibicao: itens.map((i) => tituloOu(i.title, i.id)).join(", "), inicialRelacao: itens });
+  }
   // Metadados (nome/tamanho) dos anexos atuais do card, para a lista do campo de anexo.
   const idsAnexos = b.campos.filter((c) => c.type === "attachment").flatMap((c) => (Array.isArray(card.props[c.id]) ? (card.props[c.id] as string[]) : []));
   const anexos = await anexosPorIds(ctx.ws.id, idsAnexos);

@@ -1,5 +1,6 @@
 // Leituras que dependem da maquinaria de regras (não escrevem).
 import { executar } from "./cards";
+import { configLookup, espelhoEditavel, ligadosPor, origemDoLookup } from "./fields";
 import {
   ajuste,
   carregarQuadro,
@@ -8,7 +9,7 @@ import {
   TIPOS_SOMENTE_LEITURA,
   vistaDe,
 } from "./meta";
-import { avaliarMovimento, compilar, montarContexto, travaCampo } from "./rules";
+import { avaliarMovimento, canEdit, compilar, montarContexto, travaCampo } from "./rules";
 import type { ExprCompilada } from "../lib/expr";
 import type { Actor, OpcoesOp } from "./types";
 
@@ -22,6 +23,13 @@ export interface EstadoCampo {
   travado: boolean;
   /** Erro ao avaliar visible_expr/required_expr (campo fica visível e não obrigatório). */
   erro?: string;
+  /** Por que o campo não pode ser editado agora (tooltip), quando isso não é óbvio. */
+  motivo?: string;
+  /**
+   * Espelho editável (lookup com writeback): de onde vem o valor. A UI desenha o input com o tipo e a
+   * config do campo de origem; salvar grava lá.
+   */
+  espelho?: { cardId: string | null; boardId: string; campo: { id: string; name: string; type: string; config: Record<string, unknown> } };
 }
 
 /**
@@ -75,6 +83,29 @@ export function estadoDosCampos(input: { cardId: string; actor: Actor }, opts?: 
         travado,
         ...(erro ? { erro } : {}),
       };
+      // Espelho editável: editável se há um único card de origem e o campo de lá pode ser editado.
+      if (espelhoEditavel(c) && aj?.editable !== false) {
+        const origem = await origemDoLookup(op, q, c);
+        const ids = [...new Set(ligadosPor(q, card.id, configLookup(c).via_field, ligs))];
+        let motivo: string | undefined;
+        if (!origem || TIPOS_SOMENTE_LEITURA.has(origem.campo.type)) motivo = "O campo de origem é calculado e não pode ser editado.";
+        else if (!ids.length) motivo = "Sem card de origem ligado: ligue um card para editar este valor.";
+        else if (ids.length > 1) motivo = "Ligado a vários cards: edite no card de origem.";
+        else {
+          const oc = await lerCard(op, ids[0]);
+          const r = await canEdit(op, { quadro: origem.quadro, card: vistaDe(oc), campo: origem.campo });
+          if (!r.ok) motivo = `Não pode ser editado no card de origem: ${r.motivo}`;
+        }
+        saida[c.id] = {
+          ...saida[c.id],
+          calculado: false,
+          editavel: !motivo,
+          ...(motivo ? { motivo } : {}),
+          ...(origem
+            ? { espelho: { cardId: ids.length === 1 ? ids[0] : null, boardId: origem.quadro.id, campo: { id: origem.campo.id, name: origem.campo.name, type: origem.campo.type, config: origem.campo.config } } }
+            : {}),
+        };
+      }
     }
     return saida;
   });

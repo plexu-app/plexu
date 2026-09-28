@@ -40,7 +40,15 @@ export interface ContextoCampos {
   ajustes: { fieldId: string; phaseId: string; visible: boolean | null; editable: boolean | null; required: boolean | null }[];
   boards: { id: string; name: string }[];
   /** relações que um rollup pode agregar: do board ou de outros boards apontando para ele */
-  relacoesVia: { id: string; rotulo: string }[];
+  relacoesVia: {
+    id: string;
+    rotulo: string;
+    /** nome da relação e do board do outro lado (para "Vem de") */
+    nome?: string;
+    board?: string;
+    /** campos do card do outro lado, para o lookup */
+    campos?: { slug: string; name: string; type: string }[];
+  }[];
   campos: CampoConfig[];
   /** campos disponíveis no construtor de condições */
   condicoes: CampoCondicao[];
@@ -788,6 +796,15 @@ function ConfigPorTipo({
     case "lookup": {
       const l = sub(config, "lookup");
       const upd = (k: string, v: unknown) => set("lookup", { ...l, [k]: v });
+      const rel = ctx.relacoesVia.find((v) => v.id === l.via_field);
+      const path = String(l.path ?? "");
+      const META: Record<string, string> = { titulo: "Título", fase: "Fase", status: "Status" };
+      const campoOrigem = rel?.campos?.find((c) => c.slug === path);
+      const nomeOrigem = campoOrigem?.name ?? META[path] ?? path;
+      const modo = l.mode === "copy" ? "copy" : l.editable_writeback === true ? "writeback" : "ref";
+      const setModo = (m: string) => set("lookup", { ...l, mode: m === "copy" ? "copy" : "ref", editable_writeback: m === "writeback" });
+      // Writeback só grava em campo digitável: metadados e campos calculados ficam fora.
+      const origemCalculada = !campoOrigem || calculado.has(campoOrigem.type);
       return (
         <div className="grid grid-cols-2 gap-3">
           <div className={linha}>
@@ -803,16 +820,59 @@ function ConfigPorTipo({
           </div>
           <div className={linha}>
             <Label>Campo do card relacionado</Label>
-            <Input aria-label="Campo do card relacionado" className="font-mono" value={String(l.path ?? "")} onChange={(e) => upd("path", e.target.value)} placeholder="nome" />
-            <p className="text-xs text-muted-foreground">Identificador do campo lá, ou titulo, fase, status.</p>
+            {rel?.campos ? (
+              <NativeSelect aria-label="Campo do card relacionado" value={path} onChange={(e) => upd("path", e.target.value)}>
+                <option value="">—</option>
+                {rel.campos.map((c) => (
+                  <option key={c.slug} value={c.slug}>
+                    {c.name}
+                  </option>
+                ))}
+                {Object.entries(META).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+                {path && !rel.campos.some((c) => c.slug === path) && !META[path] && <option value={path}>{path} (não encontrado)</option>}
+              </NativeSelect>
+            ) : (
+              <Input aria-label="Campo do card relacionado" className="font-mono" value={path} onChange={(e) => upd("path", e.target.value)} placeholder="nome" />
+            )}
           </div>
-          <div className={`${linha} col-span-2`}>
-            <Label>Quando o card relacionado muda</Label>
-            <NativeSelect aria-label="Modo do valor relacionado" value={l.mode === "copy" ? "copy" : "ref"} onChange={(e) => upd("mode", e.target.value)}>
-              <option value="ref">acompanha (sempre mostra o valor atual)</option>
-              <option value="copy">fica como estava (copia ao ligar ou trocar o card)</option>
-            </NativeSelect>
-          </div>
+          {rel && path && (
+            <p className="col-span-2 text-xs text-muted-foreground" data-vem-de>
+              Vem de: {rel.board ? `${rel.board} → ` : ""}
+              {rel.nome ?? rel.rotulo} → {nomeOrigem}
+            </p>
+          )}
+          <fieldset className={`${linha} col-span-2`}>
+            <legend className="mb-1 text-sm font-medium">Como o valor fica aqui</legend>
+            {[
+              { v: "copy", t: "Copiar uma vez (pode divergir depois)", d: "Copia ao ligar ou trocar o card; depois cada um segue o seu caminho." },
+              { v: "ref", t: "Espelhar (sempre igual ao card de origem)", d: "Mostra sempre o valor atual do card de origem; aqui é somente leitura." },
+              {
+                v: "writeback",
+                t: "Espelhar e permitir editar daqui (altera o card de origem)",
+                d: origemCalculada && path ? "Indisponível: o campo de origem é calculado ou de sistema." : "Editar aqui grava no card de origem, com as regras de lá; todos os espelhos acompanham.",
+              },
+            ].map((o) => (
+              <label key={o.v} className="flex items-start gap-2 py-0.5 text-sm">
+                <input
+                  type="radio"
+                  name="modo-lookup"
+                  className="mt-1"
+                  value={o.v}
+                  checked={modo === o.v}
+                  disabled={o.v === "writeback" && origemCalculada && !!path && modo !== "writeback"}
+                  onChange={() => setModo(o.v)}
+                />
+                <span>
+                  {o.t}
+                  <span className="block text-xs text-muted-foreground">{o.d}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
         </div>
       );
     }

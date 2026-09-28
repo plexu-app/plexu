@@ -123,6 +123,7 @@ async function exportar(token: string, id: string) {
   }
   naoExportavel.push(
     "fórmulas de automação (run_a_formula): a API expõe o mapa de campos, não as operações da fórmula",
+    "preencher automaticamente das conexões (autoFillFields): a API só responde para um card de origem; o conversor infere das automações que copiam %{conexão.campo}",
     "valores de exemplo, cards e registros: fora do escopo (só estrutura)",
   );
   return { fonte: "pipefy", versao_export: 1, exportado_em: new Date().toISOString(), id, tipo, repo, automacoes, nao_exportavel: naoExportavel };

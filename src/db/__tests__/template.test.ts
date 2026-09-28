@@ -44,7 +44,7 @@ const TEMPLATE: Template = {
       fields: [
         { key: "descricao", name: "Descrição", type: "text", validation: { regex: "^[A-Za-zÀ-ú ]+$", message: "Use só letras." } },
         { key: "valor", name: "Valor", type: "currency", currency: { code: "BRL" } },
-        { key: "objeto_pedido", name: "Objeto do pedido", type: "lookup", lookup: { via: "pedidos.itens", path: "objeto", mode: "ref" } },
+        { key: "objeto_pedido", name: "Objeto do pedido", type: "lookup", lookup: { via: "pedidos.itens", path: "objeto", mode: "ref", editable_writeback: true } },
       ],
     },
   ],
@@ -99,6 +99,7 @@ describe("importarTemplate", () => {
     const { and } = await import("drizzle-orm");
     const [lk] = await db.select().from(fields).where(and(eq(fields.boardId, itens), eq(fields.slug, "objeto_pedido")));
     expect(item.computed[lk.id]).toBe("Cadeiras");
+    expect(lk.config).toMatchObject({ lookup: { mode: "ref", editable_writeback: true } });
     expect(ex.boards).toHaveLength(2);
   });
 

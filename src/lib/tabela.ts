@@ -45,7 +45,7 @@ export function linhasDaTabela(
       ordem[campo.id] =
         v === null || v === ""
           ? null
-          : NUMERICOS.has(campo.type) && typeof v === "number"
+          : (NUMERICOS.has(campo.type) || campo.type === "lookup" || campo.type === "rollup") && typeof v === "number"
             ? v
             : textos[campo.id].toLocaleLowerCase("pt-BR");
     }

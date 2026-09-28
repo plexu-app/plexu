@@ -55,6 +55,11 @@ export function relatorioMarkdown(r: Relatorio, titulo = "Relatório de convers�
     l.push(`### Condicionais de campo`, "", `${b.condicionais.convertidas} de ${b.condicionais.total} viraram \`visible\` (expressão).`, "");
     for (const n of b.condicionais.naoConvertidas) l.push(`- Não convertida: ${esc(n)}`);
     if (b.condicionais.naoConvertidas.length) l.push("");
+    if (b.avisos.length) {
+      l.push("### Avisos", "");
+      for (const a of b.avisos) l.push(`- ${esc(a)}`);
+      l.push("");
+    }
     l.push("### Não representado", "");
     for (const n of b.naoRepresentado) l.push(`- **${esc(n.item)}**: ${esc(n.motivo)}`);
     if (!b.naoRepresentado.length) l.push("- nada");

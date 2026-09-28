@@ -132,7 +132,9 @@ function normalizarPorTipo(tipo: string, bruto: unknown, ctx: ContextoConfig): R
       if (!ctx.relacoes.has(via)) throw new ErroConfigCampo("escolha a relação que leva ao card relacionado");
       const path = texto(l.path);
       if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(path)) throw new ErroConfigCampo("informe o campo do card relacionado (slug, ou titulo/fase/status)");
-      return { lookup: { via_field: via, path, mode: l.mode === "copy" ? "copy" : "ref" } };
+      const mode = l.mode === "copy" ? "copy" : "ref";
+      // Writeback só faz sentido espelhando ("ref"): editar aqui grava no card de origem.
+      return { lookup: { via_field: via, path, mode, ...(mode === "ref" && l.editable_writeback === true ? { editable_writeback: true } : {}) } };
     }
     case "rollup": {
       const r = (c.rollup ?? {}) as Record<string, unknown>;
