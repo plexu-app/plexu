@@ -539,6 +539,23 @@ class Conversor {
 
   // -- referências e condições ---------------------------------------------
 
+  /**
+   * Valor comparado na condição, no vocabulário do Plexu: em campos de etiqueta (label_select) o
+   * Pipefy compara o id da etiqueta, e as opções do Plexu são os nomes.
+   */
+  valorDaCondicao(b: BoardConv, addr: string, v: string | null): string | null {
+    const [a, filho] = addr.split(".");
+    let board = b;
+    let cc = b.porRef.get(a);
+    if (filho !== undefined) {
+      const alvoKey = cc?.serie?.alvo?.key ?? cc?.campo?.relation?.board;
+      board = this.boards.find((x) => x.key === alvoKey) ?? b;
+      cc = board.porRef.get(filho);
+    }
+    if (cc?.pf.type !== "label_select" || v == null) return v;
+    return (board.exp.repo.labels ?? []).find((l) => l.id === v)?.name ?? v;
+  }
+
   ref(b: BoardConv, addr: string): Ref | string {
     if (addr === "current_phase") return { k: "fase" };
     if (addr === "title") {
@@ -589,10 +606,10 @@ class Conversor {
                   ? "fase != null"
                   : null;
       } else if (r.k === "card") {
-        e = exprBase(`card.${r.slug}`, r.tipo, x.operation, x.value);
+        e = exprBase(`card.${r.slug}`, r.tipo, x.operation, this.valorDaCondicao(b, x.field_address, x.value));
       } else {
         generalizada ||= r.generalizado;
-        const dentro = exprBase(`p.${r.slug}`, r.tipo, x.operation, x.value);
+        const dentro = exprBase(`p.${r.slug}`, r.tipo, x.operation, this.valorDaCondicao(b, x.field_address, x.value));
         e = dentro ? `filhos(${JSON.stringify(r.rel)}).algum(p, ${dentro})` : null;
       }
       if (!e) return `operação ${x.operation} sem equivalente`;

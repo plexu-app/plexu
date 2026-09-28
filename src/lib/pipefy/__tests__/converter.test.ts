@@ -71,6 +71,18 @@ const PEDIDOS: PfExport = {
       campo("aviso", "4", "Leia antes", "statement"),
       campo("fornecedor", "5", "Fornecedor", "connector", { connectedRepo: { id: "3003", name: "Fornecedores" }, canConnectMultiples: false }),
       campo("principal", "6", "Item principal", "connector", { connectedRepo: { id: "2002", name: "Itens do pedido" }, canConnectMultiples: false }),
+      campo("marcadores", "7", "Marcadores", "label_select"),
+      campo("justificativa", "8", "Justificativa", "long_text"),
+    ],
+    labels: [{ id: "77", name: "Urgente" }, { id: "78", name: "Rotina" }],
+    // No Pipefy, a condição sobre etiquetas compara o id da etiqueta
+    startFormFieldConditions: [
+      {
+        id: "fc0",
+        name: "Justificativa se urgente",
+        condition: { expressions: [{ structure_id: "0", field_address: "7", operation: "equals", value: "77" }], expressions_structure: [["0"]] },
+        actions: [{ actionId: "show", whenEvaluator: true, phaseField: { id: "justificativa" } }],
+      },
     ],
     phases: [
       {
@@ -202,7 +214,7 @@ describe("converterPipefy", () => {
     const r = relatorio.boards[0];
     expect(r.conexoes.find((c) => c.campo === "Fornecedor")?.destino).toMatch(/não convertida/);
     expect(r.naoRepresentado.map((n) => n.item)).toEqual(expect.arrayContaining(["Leia antes", "Fornecedor"]));
-    expect(r.condicionais).toEqual({ total: 1, convertidas: 1, naoConvertidas: [] });
+    expect(r.condicionais).toEqual({ total: 2, convertidas: 2, naoConvertidas: [] });
     const md = relatorioMarkdown(relatorio);
     expect(md).toContain("14 automações no Pipefy");
     expect(md).toContain("| Pedidos de compra (pipe) |");
@@ -237,6 +249,12 @@ describe("formato e título", () => {
     });
     expect(regexDoPipefy("^[A-Z ]+$")).toBe("^[A-Z ]+$");
     expect(regexDoPipefy("([")).toBeNull();
+  });
+
+  it("condição sobre etiqueta compara pelo nome (o Pipefy usa o id da etiqueta)", () => {
+    const p = board("pedidos-de-compra");
+    expect(p.fields.find((f) => f.key === "marcadores")).toMatchObject({ type: "multi_select", options: ["Urgente", "Rotina"] });
+    expect(p.fields.find((f) => f.key === "justificativa")?.visible).toBe('card.marcadores != null && "Urgente" in card.marcadores');
   });
 
   it("sem título marcado no Pipefy: primeiro texto obrigatório", () => {
