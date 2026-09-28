@@ -338,3 +338,56 @@ describe("mapeamento de tipos Pipefy → Plexu", () => {
     expect(campos.find((f) => f.name === "Aviso")).toBeUndefined();
   });
 });
+
+describe("preencher automaticamente (conexão)", () => {
+  // A config autoFillFields não sai da API: o conversor infere da automação que copia %{conexão.campo}.
+  const FORN: PfExport = {
+    fonte: "pipefy",
+    id: "7007",
+    tipo: "table",
+    repo: { id: "7007", name: "Parceiros", title_field: { id: "nome" }, table_fields: [campo("nome", "700", "Nome", "short_text"), campo("cidade", "701", "Cidade", "short_text"), campo("email", "702", "E-mail", "email")] },
+    automacoes: [],
+  };
+  const OS: PfExport = {
+    fonte: "pipefy",
+    id: "8008",
+    tipo: "pipe",
+    repo: {
+      id: "8008",
+      name: "Ordens",
+      start_form_fields: [
+        campo("titulo", "800", "Título", "short_text", { required: true }),
+        campo("parceiro", "801", "Parceiro", "connector", { connectedRepo: { id: "7007", name: "Parceiros" }, canConnectMultiples: false }),
+        campo("cidade_p", "802", "Cidade do parceiro", "short_text", { required: true }),
+        campo("email_p", "803", "E-mail do parceiro", "email", { editable: true }),
+      ],
+      phases: [{ id: "80", name: "Aberta", index: 0, fields: [] }],
+    },
+    automacoes: [
+      auto("af", "Preencher dados do parceiro", {
+        event_repo: { id: "8008" },
+        event_params: { triggerFields: [{ id: "parceiro" }] },
+        action_repo_v2: { id: "8008" },
+        action_params: {
+          field_map: [
+            { fieldId: "802", inputMode: "copy_from", value: "%{801.701}" },
+            { fieldId: "803", inputMode: "copy_from", value: "%{801.702}" },
+          ],
+        },
+      }),
+    ],
+  };
+  const r = converterPipefy([OS, FORN]);
+  const f = (k: string) => r.template.boards[0].fields.find((x) => x.key === k);
+
+  it("campo não editável no Pipefy vira espelho (lookup ref); editável vira cópia com aviso", () => {
+    expect(validarTemplate(r.template)).toEqual([]);
+    expect(f("cidade_do_parceiro")).toMatchObject({ type: "lookup", lookup: { via: "parceiro", path: "cidade", mode: "ref" } });
+    expect(f("cidade_do_parceiro")?.required).toBeUndefined();
+    expect(f("e_mail_do_parceiro")).toMatchObject({ type: "lookup", lookup: { via: "parceiro", path: "e_mail", mode: "copy" } });
+    expect(r.relatorio.boards[0].automacoes[0]).toMatchObject({ destino: "lookup" });
+    expect(r.relatorio.boards[0].avisos).toHaveLength(1);
+    expect(r.relatorio.boards[0].avisos[0]).toMatch(/E-mail do parceiro.*editável no Pipefy.*cópia/);
+    expect(relatorioMarkdown(r.relatorio)).toContain("### Avisos");
+  });
+});
