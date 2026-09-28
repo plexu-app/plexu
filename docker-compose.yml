@@ -22,6 +22,11 @@ services:
       APP_URL: http://localhost:3000
       # obrigatório: no .env, APP_SECRET=$(openssl rand -hex 32). Vazio aborta o compose.
       APP_SECRET: "${APP_SECRET:?defina APP_SECRET no .env - gere com openssl rand -hex 32}"
+      # anexos em disco (backup: ver README); limite por arquivo em MB
+      ATTACHMENTS_DIR: /data/attachments
+      ATTACHMENTS_MAX_MB: "${ATTACHMENTS_MAX_MB:-25}"
+    # pasta do host montada no container: o seed (que roda no host) e o app veem os mesmos arquivos
+    volumes: ["${ATTACHMENTS_HOST_DIR:-./.data/attachments}:/data/attachments"]
     ports: ["3000:3000"]
     command: sh -c "node scripts/migrate.mjs && node server.js"
 

@@ -46,6 +46,10 @@ export function formatarValor(campo: CampoFmt, v: unknown, pessoas?: Map<string,
     }
     case "number":
       return typeof v === "number" ? numero.format(v) : String(v);
+    case "attachment": {
+      const n = Array.isArray(v) ? v.length : 1;
+      return `${n} anexo${n === 1 ? "" : "s"}`;
+    }
     case "lookup": {
       // Valor de card relacionado: sem o tipo de origem, formata o básico (número, sim/não, listas).
       const um = (x: unknown) => (typeof x === "number" ? numero.format(x) : x === true ? "Sim" : x === false ? "Não" : typeof x === "object" && x ? JSON.stringify(x) : String(x));

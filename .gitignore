@@ -12,3 +12,6 @@ test-results
 
 # Exports de ferramentas externas (ex.: Pipefy). Dados de usuário: nunca versionar.
 exports/
+
+# Anexos no desenvolvimento local (ATTACHMENTS_DIR padrão fora de produção)
+.data/

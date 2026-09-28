@@ -57,6 +57,7 @@ Tudo é referenciado por `key`, nunca por UUID. A key de campo é o identificado
 | `options` | `select` / `multi_select` |
 | `currency` | `{ "code": "BRL" }` |
 | `multiple` | `person` com várias pessoas |
+| `accept` | `attachment`: extensões/tipos aceitos, como o atributo accept do HTML (`".pdf,.docx,image/*"`); vazio aceita qualquer arquivo |
 | `relation` | `{ "board", "cardinality": "one"\|"many", "exclusive", "is_parent", "inverse_name", "filter" }`. `board` é a key de um board do template ou o slug de um board que já existe no workspace de destino |
 | `sequence` | `{ "pattern": "PC-{n}", "scope": "global"\|"year"\|"month"\|"day"\|"parent", "seed", "pad", "parent_field" }` |
 | `rollup` | `{ "via", "agg": "count"\|"sum"\|"avg"\|"min"\|"max", "expr", "filter", "format": "currency" }`. `via` é a key de uma relação deste board ou `"<board>.<campo>"` para uma relação de outro board que aponta para este |
@@ -106,7 +107,8 @@ Fases (ordem, final, destinos permitidos), campos (tipo, obrigatório, editável
 | `select`, `radio_*` | `select` |
 | `checklist_*`, `label_select` | `multi_select` (etiquetas do pipe viram opções) |
 | `assignee_select` | `person` |
-| `attachment`, `cpf`, `cnpj` | iguais |
+| `attachment` | `attachment`; as extensões em `custom_validation` viram `accept` |
+| `cpf`, `cnpj` | iguais |
 | `id` | `sequence` `{n}` |
 | `statement` | ignorado (texto fixo do formulário) |
 | `connector` | `relation`; "1 card" → `cardinality: one`. O conversor nunca marca `exclusive`: exclusividade só por opção explícita no template |

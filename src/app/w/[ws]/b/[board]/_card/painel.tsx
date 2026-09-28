@@ -17,6 +17,7 @@ import { montarCartoes } from "@/components/kanban-dados";
 import { fasesValidas } from "@/lib/fases-preenchimento";
 import { descreverEvento, formatarDataHora, formatarValor, idCurto, TIPOS_CALCULADOS_UI, tituloOu, valorDoCard, type CampoFmt } from "@/lib/formatar";
 import { exigirBoard, exigirCard, exigirMembro } from "@/server/acesso";
+import { anexosPorIds } from "@/server/anexos/servico";
 import { ajustesDoBoard } from "@/server/config-board";
 import { camposDaFase, hojeSP, obrigatoriosPossiveis } from "../_lib/campos-da-fase";
 import {
@@ -110,6 +111,9 @@ export async function PainelCard({ ws, board, cardId, voltarPara }: { ws: string
     .filter((g) => g.itens.length > 0);
 
   const camposForm = visiveis.filter((c) => !naEsquerda(c)).map((c) => ({ campo: c, valor: valorDoCard(c, card), estado: estado[c.id] }));
+  // Metadados (nome/tamanho) dos anexos atuais do card, para a lista do campo de anexo.
+  const idsAnexos = b.campos.filter((c) => c.type === "attachment").flatMap((c) => (Array.isArray(card.props[c.id]) ? (card.props[c.id] as string[]) : []));
+  const anexos = await anexosPorIds(ctx.ws.id, idsAnexos);
   const relacoesNoForm = Object.fromEntries(
     camposForm
       .filter((x) => x.campo.type === "relation")
@@ -267,6 +271,7 @@ export async function PainelCard({ ws, board, cardId, voltarPara }: { ws: string
             campos={camposForm}
             pessoas={pessoas}
             relacoes={relacoesNoForm}
+            anexos={anexos}
           />
         </>
       }

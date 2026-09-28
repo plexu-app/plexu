@@ -777,6 +777,14 @@ function ConfigPorTipo({
         </div>
       );
     }
+    case "attachment":
+      return (
+        <div className={linha}>
+          <Label>Tipos de arquivo aceitos</Label>
+          <Input aria-label="Tipos de arquivo aceitos" value={String(config.accept ?? "")} onChange={(e) => set("accept", e.target.value as unknown as Config)} placeholder=".pdf, .docx, image/*" />
+          <p className="text-xs text-muted-foreground">Extensões ou tipos, separados por vírgula. Vazio aceita qualquer arquivo.</p>
+        </div>
+      );
     case "lookup": {
       const l = sub(config, "lookup");
       const upd = (k: string, v: unknown) => set("lookup", { ...l, [k]: v });

@@ -1,4 +1,5 @@
 "use client";
+import { CampoAnexos, type AnexoMeta } from "@/components/card/campo-anexos";
 import { Input, NativeSelect, Textarea } from "@/components/ui/input";
 import { formatarValor } from "@/lib/formatar";
 import { nomeInput } from "@/lib/form-campos";
@@ -12,6 +13,10 @@ export interface CampoInputProps {
   compacto?: boolean;
   /** id do <form> dono dos inputs, quando eles ficam fora dele (atributo HTML form). */
   form?: string;
+  /** Contexto para upload de anexos (board do card e metadados dos anexos atuais). */
+  anexos?: { ws: string; board: string; meta: Record<string, AnexoMeta> };
+  /** Avisa mudança que não dispara onChange do formulário (anexos). */
+  aoMudar?: () => void;
 }
 
 type Opcao = string | { value?: string; id?: string; label?: string };
@@ -32,7 +37,7 @@ function paraDatetimeLocal(v: unknown): string {
 }
 
 /** Input HTML adequado ao tipo do campo, com name = f:<field_id>. */
-export function CampoInput({ campo, valor, pessoas, id, obrigatorio, compacto, form }: CampoInputProps) {
+export function CampoInput({ campo, valor, pessoas, id, obrigatorio, compacto, form, anexos, aoMudar }: CampoInputProps) {
   const name = nomeInput(campo.id);
   const comum = { id, name, form, "aria-label": campo.name, "aria-required": obrigatorio || undefined };
   const texto = valor === null || valor === undefined ? "" : String(valor);
@@ -84,10 +89,12 @@ export function CampoInput({ campo, valor, pessoas, id, obrigatorio, compacto, f
         </NativeSelect>
       );
     case "attachment":
-      // Upload de anexos ainda não existe: sem caixa de texto (o core só aceita ids de anexo).
+      if (anexos)
+        return <CampoAnexos ws={anexos.ws} board={anexos.board} campo={campo} valor={valor} meta={anexos.meta} id={id} form={form} obrigatorio={obrigatorio} aoMudar={aoMudar} />;
+      // Sem contexto de upload (ex.: formulário rápido): só leitura, nunca caixa de texto.
       return (
-        <p id={id} className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground" data-anexo-indisponivel>
-          {Array.isArray(valor) && valor.length ? `${valor.length} anexo(s). ` : ""}Envio de anexos ainda não disponível nesta versão.
+        <p id={id} className="text-sm text-muted-foreground">
+          {Array.isArray(valor) && valor.length ? `${valor.length} anexo(s)` : "Sem anexos"}
         </p>
       );
     case "cpf":
