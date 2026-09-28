@@ -71,7 +71,7 @@ export type EntidadeConfig = "workspace" | "board" | "phase" | "field" | "rule" 
 
 export interface EventoConfig {
   entidade: EntidadeConfig;
-  acao: "created" | "updated" | "archived" | "reordered";
+  acao: "created" | "updated" | "archived" | "restored" | "deleted" | "reordered";
   id: string;
   /** Valores novos (e antigos em updated) relevantes para auditoria. */
   dados?: Record<string, unknown>;

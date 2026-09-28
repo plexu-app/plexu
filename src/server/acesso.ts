@@ -7,7 +7,7 @@ import { ErroConfig } from "./config";
 
 export interface Contexto {
   usuario: UsuarioSessao;
-  ws: { id: string; slug: string; name: string };
+  ws: { id: string; slug: string; name: string; arquivado: boolean };
   papel: Papel;
   actor: Actor;
 }
@@ -18,10 +18,13 @@ export async function exigirUsuario(): Promise<UsuarioSessao> {
   return u;
 }
 
-/** Usuário logado e membro do workspace; senão login/404. Toda server action começa aqui. */
-export async function exigirMembro(wsSlug: string): Promise<Contexto> {
+/**
+ * Usuário logado e membro do workspace; senão login/404. Toda server action começa aqui.
+ * Workspace arquivado dá 404, salvo com permitirArquivado (só o owner: configurações do workspace).
+ */
+export async function exigirMembro(wsSlug: string, opcoes: { permitirArquivado?: boolean } = {}): Promise<Contexto> {
   const usuario = await exigirUsuario();
-  const m = await membroDoWorkspace(usuario.id, wsSlug);
+  const m = await membroDoWorkspace(usuario.id, wsSlug, { incluirArquivado: opcoes.permitirArquivado });
   if (!m) notFound();
   return { usuario, ws: m.ws, papel: m.papel, actor: { type: "user", id: usuario.id } };
 }

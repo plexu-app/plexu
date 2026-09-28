@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { Database, KanbanSquare, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Archive, Database, KanbanSquare, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
 import { sair } from "@/app/auth-actions";
 import { NovoBoard } from "@/components/criar-board";
 import { cn } from "@/lib/utils";
@@ -53,6 +53,9 @@ export function Sidebar({
   boards,
   podeCriar,
   marca,
+  workspaces = [],
+  arquivados = 0,
+  ehOwner = false,
 }: {
   ws: string;
   wsNome: string;
@@ -60,6 +63,11 @@ export function Sidebar({
   boards: BoardSidebar[];
   podeCriar: boolean;
   marca: React.ReactNode;
+  /** Workspaces ativos do usuário (arquivados não aparecem). */
+  workspaces?: { slug: string; name: string }[];
+  /** Quantos arquivados o usuário (owner) pode restaurar. */
+  arquivados?: number;
+  ehOwner?: boolean;
 }) {
   const atual = usePathname();
   const [recolhida, alternar] = useRecolhida();
@@ -119,6 +127,45 @@ export function Sidebar({
             <NovoBoard ws={ws} />
           </div>
         )}
+        <div className="mt-auto" data-lista-workspaces>
+          <h2 className="px-2 pb-1 recolhida:sr-only text-xs font-semibold uppercase tracking-wide text-muted-foreground">Workspaces</h2>
+          <ul className="flex flex-col">
+            {workspaces.map((w) => (
+              <li key={w.slug}>
+                <Link
+                  href={`/w/${w.slug}`}
+                  aria-current={w.slug === ws ? "true" : undefined}
+                  title={w.name}
+                  className={cn("flex h-8 items-center gap-2 rounded-md px-2 text-sm hover:bg-background recolhida:justify-center", w.slug === ws && "font-medium text-foreground")}
+                >
+                  <LayoutGrid className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate recolhida:sr-only">{w.name}</span>
+                </Link>
+              </li>
+            ))}
+            {arquivados > 0 && (
+              <li>
+                <Link href="/arquivados" title="Workspaces arquivados" className="flex h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground hover:bg-background recolhida:justify-center">
+                  <Archive className="size-4 shrink-0" />
+                  <span className="truncate recolhida:sr-only">Arquivados ({arquivados})</span>
+                </Link>
+              </li>
+            )}
+            {ehOwner && (
+              <li>
+                <Link
+                  href={`/w/${ws}/settings`}
+                  aria-current={atual === `/w/${ws}/settings` ? "page" : undefined}
+                  title="Configurações do workspace"
+                  className="flex h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground hover:bg-background recolhida:justify-center"
+                >
+                  <Settings className="size-4 shrink-0" />
+                  <span className="truncate recolhida:sr-only">Configurações do workspace</span>
+                </Link>
+              </li>
+            )}
+          </ul>
+        </div>
       </nav>
       <div className="flex items-center gap-2 border-t px-3 py-2 text-sm recolhida:flex-col recolhida:px-0">
         <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary-strong" aria-hidden>

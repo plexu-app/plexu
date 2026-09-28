@@ -15,7 +15,9 @@ create table workspaces (
   slug text unique not null,
   name text not null,
   settings jsonb not null default '{}',          -- locale, timezone, calendário padrão
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  archived_at timestamptz,                        -- some das listas; dados intactos; restaurável pelo owner
+  deleted_at timestamptz                          -- lápide: dados removidos, linha mantida para os eventos
 );
 
 create table users (
@@ -374,12 +376,14 @@ create table events (
   actor_type text not null check (actor_type in ('user','automation','api','system','import','form')),
   actor_id uuid,
   data jsonb not null,                            -- field_updated: {field_id, old, new}; moved: {from_phase, to_phase}
-  occurred_at timestamptz not null default now()
+  occurred_at timestamptz not null default now(),
+  workspace_deleted_at timestamptz                -- marcado ao excluir o workspace (auditoria)
 );
 create index on events (card_id, occurred_at);
 create index on events (board_id, occurred_at);
 create index on events (workspace_id, type, occurred_at);
--- Sem update/delete: revogar via grants + trigger que rejeita.
+-- Sem update/delete: revogar via grants + trigger que rejeita. Única exceção: marcar workspace_deleted_at
+-- (uma vez, com o workspace já excluído e o resto da linha igual).
 
 create table webhooks (
   id uuid primary key default gen_random_uuid(),

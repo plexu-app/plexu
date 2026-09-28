@@ -7,7 +7,7 @@ import "server-only";
 // Download: só membro do workspace; anexo de card exige card ativo; provisório, só quem enviou.
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { attachments, cards, workspaceMembers } from "@/db/schema";
+import { attachments, cards, workspaceMembers, workspaces } from "@/db/schema";
 import { problemaNoArquivo } from "@/lib/anexos";
 import { boardPorSlug, membroDoWorkspace } from "../consultas";
 import { armazenamentoPadrao, limiteBytes, novaChave, type Armazenamento } from "./armazenamento";
@@ -81,11 +81,12 @@ export async function abrirDownload(
   if (!/^[0-9a-f-]{36}$/i.test(p.id)) throw naoEncontrado;
   const [a] = await db.select().from(attachments).where(eq(attachments.id, p.id));
   if (!a) throw naoEncontrado;
-  // Mesmo 404 para "não existe" e "sem acesso": não revela anexos de outros workspaces.
+  // Mesmo 404 para "não existe" e "sem acesso": não revela anexos de outros workspaces (nem de arquivados).
   const [membro] = await db
     .select({ u: workspaceMembers.userId })
     .from(workspaceMembers)
-    .where(and(eq(workspaceMembers.workspaceId, a.workspaceId), eq(workspaceMembers.userId, p.usuarioId)));
+    .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
+    .where(and(eq(workspaceMembers.workspaceId, a.workspaceId), eq(workspaceMembers.userId, p.usuarioId), isNull(workspaces.archivedAt), isNull(workspaces.deletedAt)));
   if (!membro) throw naoEncontrado;
   if (a.cardId) {
     const [c] = await db.select({ id: cards.id }).from(cards).where(and(eq(cards.id, a.cardId), isNull(cards.deletedAt)));
