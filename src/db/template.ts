@@ -43,6 +43,7 @@ function configDoCampo(
   if (c.options) cfg.options = c.options;
   if (c.currency) cfg.currency = c.currency;
   if (c.multiple) cfg.multiple = true;
+  if (c.accept) cfg.accept = c.accept;
   if (c.relation) {
     cfg.relation = {
       target_board: ids.boards.get(c.relation.board) ?? "",
@@ -258,6 +259,7 @@ export async function exportarTemplate(wsSlug: string, boardSlugs: string[], nom
     if (Array.isArray(cfg.options)) c.options = (cfg.options as unknown[]).map((o) => (typeof o === "string" ? o : String((o as { value?: string }).value ?? "")));
     if (cfg.currency) c.currency = cfg.currency as { code: string };
     if (cfg.multiple === true) c.multiple = true;
+    if (typeof cfg.accept === "string" && cfg.accept) c.accept = cfg.accept;
     const rel = cfg.relation as Config | undefined;
     if (rel) {
       c.relation = {

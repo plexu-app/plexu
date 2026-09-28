@@ -328,9 +328,9 @@ describe("mapeamento de tipos Pipefy → Plexu", () => {
     expect(campos.find((f) => f.name === `Campo ${pipefy}`)?.type).toBe(plexu);
   });
 
-  it("attachment continua anexo (sem validation: custom_validation de anexo são extensões, não regex)", () => {
+  it("attachment continua anexo; custom_validation (extensões) vira accept, não regex", () => {
     const anexo = campos.find((f) => f.name === "Campo attachment");
-    expect(anexo).toMatchObject({ type: "attachment" });
+    expect(anexo).toMatchObject({ type: "attachment", accept: ".pdf,.docx" });
     expect(anexo?.validation).toBeUndefined();
   });
 

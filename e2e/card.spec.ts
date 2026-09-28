@@ -2,6 +2,7 @@
 // com busca); aba "Relacionados" só com relações inversas; fases anteriores em leitura com "editar"
 // quando permitido (editable_everywhere). Abaixo de 1100px as colunas empilham.
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { anexarMinuta } from "./apoio";
 
 const EMAIL = process.env.PLEXU_SEED_EMAIL ?? "demo@plexu.dev";
 const SENHA = process.env.PLEXU_SEED_SENHA ?? "plexu-demo-2026";
@@ -25,6 +26,7 @@ test("card em 3 colunas: relações no formulário, inversas em Relacionados, fa
   const novo = page.getByRole("dialog", { name: "Novo card" });
   await novo.getByLabel("Objeto").fill("Contrato em 3 colunas (e2e)");
   await novo.getByLabel("Contratante").fill("Construtora Colunas");
+  await anexarMinuta(novo);
   await novo.getByRole("button", { name: "Criar card" }).click();
   await page.waitForURL(/\/c\/[0-9a-f-]{36}$/);
   const urlContrato = page.url();

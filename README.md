@@ -72,6 +72,27 @@ pnpm e2e
 
 **`pnpm build` no Windows**: a saída `standalone` do Next cria symlinks, e o Windows recusa sem permissão (`EPERM: operation not permitted, symlink`). Ative o *Modo de desenvolvedor* (Configurações → Sistema → Para desenvolvedores) ou rode o build via Docker (`docker compose build app`). O CI (Linux) não tem essa restrição.
 
+## Anexos
+
+Os arquivos anexados aos cards ficam em disco, em `ATTACHMENTS_DIR`:
+
+- No `docker compose`, o container `app` usa `/data/attachments`, montada da pasta do host `./.data/attachments` (outra pasta: `ATTACHMENTS_HOST_DIR` no `.env`). O seed, que roda no host, grava na mesma pasta.
+- Fora do Docker (`pnpm dev`), o padrão também é `.data/attachments` na raiz do projeto (fora do git).
+- Limite por arquivo: `ATTACHMENTS_MAX_MB` (padrão 25). Tipos aceitos: por campo, em "Tipos de arquivo aceitos".
+
+Os arquivos nunca são servidos como pasta estática: o download passa por `/api/anexos/<id>`, que confere a sessão e o acesso ao card. No banco (`attachments`) ficam o nome original, o tipo, o tamanho e a chave aleatória do arquivo em disco. Excluir um card não apaga os arquivos (a exclusão é lógica e o card pode ser restaurado).
+
+**Backup**: anexos e banco andam juntos — faça os dois no mesmo momento.
+
+```bash
+# banco
+docker compose exec db pg_dump -U plexu plexu > plexu-$(date +%F).sql
+# anexos (a pasta inteira)
+tar czf anexos-$(date +%F).tar.gz -C .data/attachments .
+# restaurar anexos
+mkdir -p .data/attachments && tar xzf anexos-AAAA-MM-DD.tar.gz -C .data/attachments
+```
+
 ## Stack
 
 TypeScript ponta a ponta · Next.js · Drizzle · PostgreSQL (dados, filas e eventos) · Tailwind. Sem Redis, sem serviços externos. Uma instalação = um `docker compose up`.

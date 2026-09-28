@@ -1,6 +1,7 @@
 // Criação de cards: campos condicionais avaliados ao vivo no modal e sub-tabela que abre o formulário
 // completo do board filho quando o "Adicionar" rápido não cobre os obrigatórios (seed "demo").
 import { expect, test, type Page } from "@playwright/test";
+import { anexarMinuta } from "./apoio";
 
 const EMAIL = process.env.PLEXU_SEED_EMAIL ?? "demo@plexu.dev";
 const SENHA = process.env.PLEXU_SEED_SENHA ?? "plexu-demo-2026";
@@ -34,6 +35,7 @@ test("modal de criação: campo condicional aparece e passa a ser obrigatório c
   await expect(garantia).toHaveCount(0);
   await modal.getByLabel("Exige garantia").check();
   await modal.getByLabel("Valor da garantia").fill("5000");
+  await anexarMinuta(modal);
   await modal.getByRole("button", { name: "Criar card" }).click();
   await page.waitForURL(/\/c\/[0-9a-f-]{36}$/);
   await expect(page.getByTestId("painel-card").locator('[data-campo="Valor da garantia"]')).toBeVisible();
@@ -45,6 +47,7 @@ test("sub-tabela: sem cobertura dos obrigatórios, Adicionar abre o formulário 
   await page.getByRole("button", { name: "Novo card", exact: true }).click();
   const novo = page.getByRole("dialog", { name: "Novo card" });
   await novo.getByLabel("Objeto").fill("Contrato com aditivo (e2e)");
+  await anexarMinuta(novo);
   await novo.getByRole("button", { name: "Criar card" }).click();
   await page.waitForURL(/\/c\/[0-9a-f-]{36}$/);
 
@@ -92,6 +95,7 @@ test("modal de criação: relação N:1 com busca; obrigatório faltando é dest
   await expect(modal.getByRole("alert").filter({ hasText: "Preencha os campos obrigatórios." })).toBeVisible();
 
   await objeto.getByRole("textbox").fill("Contrato com fornecedor (e2e)");
+  await anexarMinuta(modal);
   await modal.getByRole("button", { name: "Criar card" }).click();
   await page.waitForURL(/\/c\/[0-9a-f-]{36}$/);
   await expect(page.getByTestId("coluna-atual").locator('[data-campo="Fornecedor"]').getByRole("link", { name: "Construtora Beta" })).toBeVisible();
@@ -118,6 +122,7 @@ test("formato (regex): erro abaixo do campo com a mensagem configurada, ajuda se
     const contratante = modal.locator('[data-campo-novo="Contratante"]');
     await modal.getByLabel("Objeto").fill("Contrato com formato (e2e)");
     await contratante.getByRole("textbox").fill("ACME LTDA");
+    await anexarMinuta(modal);
     await modal.getByRole("button", { name: "Criar card" }).click();
     await expect(contratante.locator("[data-erro-campo]")).toHaveText("Use só letras maiúsculas, sem espaços.");
     await expect(contratante.getByText("Nome curto do contratante.")).toBeVisible();

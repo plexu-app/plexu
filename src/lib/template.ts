@@ -42,6 +42,8 @@ export interface CampoTemplate {
   options?: string[];
   currency?: { code: string };
   multiple?: boolean;
+  /** Anexo: extensões/tipos aceitos (".pdf, image/*"). */
+  accept?: string;
   relation?: {
     /** key de um board do template, ou slug de um board que já existe no workspace de destino. */
     board: string;

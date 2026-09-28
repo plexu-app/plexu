@@ -3,9 +3,10 @@
 //   pnpm db:seed
 import { eq } from "drizzle-orm";
 import { db } from "./index";
-import { boards, fieldPhaseSettings, fields, phases, rules, users, workspaceMembers, workspaces } from "./schema";
+import { attachments, boards, fieldPhaseSettings, fields, phases, rules, users, workspaceMembers, workspaces } from "./schema";
 import { createCard, emitirEventoConfig, garantirIndiceExclusivo, updateFields, type Actor } from "../core";
 import { hashSenha } from "../server/auth/senha";
+import { ArmazenamentoDisco, diretorioAnexos, novaChave } from "../server/anexos/disco";
 
 const EMAIL = process.env.PLEXU_SEED_EMAIL ?? "demo@plexu.dev";
 const SENHA = process.env.PLEXU_SEED_SENHA ?? "plexu-demo-2026";
@@ -106,6 +107,8 @@ async function main() {
       relation: { target_board: ba.id, cardinality: "many", exclusive: true, inverse_name: "contrato" },
     });
     await garantirIndiceExclusivo(tx, cAditivos);
+    // Anexo obrigatório na criação (Elaboração): a minuta do contrato.
+    const cMinuta = await campo(bc.id, "minuta", "Minuta do contrato", "attachment", 13, { ...elab, accept: ".pdf,.docx" }, { requiredExpr: "true", helpText: "PDF ou Word da minuta." });
     await campo(bc.id, "fornecedor", "Fornecedor", "relation", 12, { ...elab, relation: { target_board: bf.id, cardinality: "one", inverse_name: "contratos" } });
     await campo(bc.id, "exige_garantia", "Exige garantia", "boolean", 10, elab);
     await campo(
@@ -132,13 +135,21 @@ async function main() {
       .returning();
     await cfg(bc.id, "rule", regra.id, { kind: "can_leave" });
 
-    return { actor, contratos: bc.id, parcelas: bp.id, fornecedores: bf.id, cParcelas };
+    return { actor, ws: ws.id, userId: u.id, contratos: bc.id, parcelas: bp.id, fornecedores: bf.id, cParcelas, cMinuta };
   });
 
   // Exemplo: um contrato com duas parcelas, uma medida (via core, como qualquer canal)
+  // Minuta de exemplo: arquivo em ATTACHMENTS_DIR (mesma pasta montada no container do app).
+  const pdf = new TextEncoder().encode("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n");
+  const chave = novaChave();
+  await new ArmazenamentoDisco(diretorioAnexos()).gravar(chave, pdf);
+  const [minuta] = await db
+    .insert(attachments)
+    .values({ workspaceId: ids.ws, fieldId: ids.cMinuta, storageKey: chave, filename: "minuta-reforma-da-sede.pdf", mime: "application/pdf", size: pdf.length, uploadedBy: ids.userId })
+    .returning();
   const contrato = await createCard({
     boardId: ids.contratos,
-    props: { objeto: "Reforma da sede", contratante: "Construtora Beta", cnpj: "11.222.333/0001-81" },
+    props: { objeto: "Reforma da sede", contratante: "Construtora Beta", cnpj: "11.222.333/0001-81", minuta: [minuta.id] },
     actor: ids.actor,
   });
   for (const [nome, cnpj] of [

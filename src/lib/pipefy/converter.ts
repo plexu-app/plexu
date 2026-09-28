@@ -2,6 +2,7 @@
 // (src/lib/template.ts) e produz os dados do relatório de conversão. Puro e genérico: nenhuma
 // regra depende de nomes de pipes/campos; só de tipos, ids e padrões (séries numeradas, fórmulas,
 // "move de volta se"). Mapeamentos em docs/TEMPLATE.md (seção Pipefy).
+import { normalizarAccept } from "../anexos";
 import { slugCampo, slugify } from "../slug";
 import { VERSAO_TEMPLATE, type AutomacaoTemplate, type BoardTemplate, type CampoTemplate, type RegraTemplate, type Template } from "../template";
 import type { PfAutomacao, PfCampo, PfCondicao, PfCondicional, PfExport, PfFase } from "./export";
@@ -424,6 +425,11 @@ class Conversor {
       }
       const c: CampoTemplate = { key: unico(slugCampo(pf.label), usados), name: pf.label, type: map.tipo };
       if (pf.help || pf.description) c.help = pf.help || pf.description;
+      // Anexo: no Pipefy, custom_validation lista as extensões aceitas.
+      if (map.tipo === "attachment" && pf.custom_validation?.trim()) {
+        const accept = normalizarAccept(pf.custom_validation);
+        if (accept) c.accept = accept;
+      }
       // Regex do Pipefy (campos de texto) com o texto de ajuda como mensagem de erro.
       if ((map.tipo === "text" || map.tipo === "long_text") && pf.custom_validation?.trim()) {
         const re = regexDoPipefy(pf.custom_validation);

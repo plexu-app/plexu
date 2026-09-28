@@ -12,6 +12,7 @@ import {
   nomeIndiceExclusivo,
   normalizarEntrada,
   recalcular,
+  vincularAnexos,
   verificarUnicidade,
 } from "./fields";
 import {
@@ -219,6 +220,7 @@ export function createCard(input: CreateCardInput, opts?: OpcoesOp): Promise<Car
         phaseEnteredAt: faseId ? agora : null,
       })
       .returning();
+    await vincularAnexos(op, q, card.id, card.props);
     await emitirEvento(op.tx, origemDe(op, card), { type: "card.created", data: { phase_id: faseId, props: card.props } });
 
     for (const { campo, alvo } of destinos) await inserirLigacao(op, campo, card, alvo);
@@ -252,7 +254,7 @@ export function updateFields(input: UpdateFieldsInput, opts?: OpcoesOp): Promise
   return executar(input.actor, opts, async (op) => {
     const card = await lerCard(op, input.cardId, true);
     const q = await carregarQuadro(op, card.boardId);
-    const ent = await normalizarEntrada(op, q, input.props);
+    const ent = await normalizarEntrada(op, q, input.props, card.id);
     const ligs = await lerLigacoes(op, [card.id]);
     const vista = vistaDe(card);
 
@@ -282,6 +284,7 @@ export function updateFields(input: UpdateFieldsInput, opts?: OpcoesOp): Promise
         .update(cards)
         .set({ props, title: tituloDe(q, props, card.computed), updatedAt: new Date() })
         .where(eq(cards.id, card.id));
+      await vincularAnexos(op, q, card.id, props);
       for (const [fid, v] of mudancas) {
         await emitirEvento(op.tx, origemDe(op, card), {
           type: "card.field_updated",

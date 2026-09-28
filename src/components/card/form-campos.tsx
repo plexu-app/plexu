@@ -7,6 +7,7 @@ import { useId, useState, useTransition } from "react";
 import { Calculator, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { salvarCamposAction } from "@/app/w/[ws]/actions";
+import type { AnexoMeta } from "@/components/card/campo-anexos";
 import { CampoInput } from "@/components/card/campo-input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/input";
@@ -28,6 +29,7 @@ export function FormCampos({
   campos,
   pessoas,
   relacoes = {},
+  anexos = {},
 }: {
   ws: string;
   board: string;
@@ -36,6 +38,8 @@ export function FormCampos({
   pessoas: Record<string, string>;
   /** Conteúdo de cada campo de relação (sub-tabela ou seletor), por field_id. */
   relacoes?: Record<string, React.ReactNode>;
+  /** Metadados dos anexos atuais do card (id → nome/tamanho). */
+  anexos?: Record<string, AnexoMeta>;
 }) {
   const router = useRouter();
   const formId = `campos-${useId().replace(/:/g, "")}`;
@@ -79,7 +83,7 @@ export function FormCampos({
               {!calculado && !estado?.travado && !editavel && <Badge variant="outline">somente leitura</Badge>}
             </div>
             {editavel ? (
-              <CampoInput campo={campo} valor={valor} pessoas={pessoas} id={idInput} obrigatorio={estado?.obrigatorio} form={formId} />
+              <CampoInput campo={campo} valor={valor} pessoas={pessoas} id={idInput} obrigatorio={estado?.obrigatorio} form={formId} anexos={{ ws, board, meta: anexos }} />
             ) : (
               <div
                 id={idInput}

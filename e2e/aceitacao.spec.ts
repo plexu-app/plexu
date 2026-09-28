@@ -1,5 +1,6 @@
 // Caso de aceitação do MVP (seed "demo"): contrato → parcelas → regra de saída.
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { anexarMinuta } from "./apoio";
 
 const EMAIL = process.env.PLEXU_SEED_EMAIL ?? "demo@plexu.dev";
 const SENHA = process.env.PLEXU_SEED_SENHA ?? "plexu-demo-2026";
@@ -36,6 +37,7 @@ test("contrato com 2 parcelas: mover sem medir é bloqueado; depois de medir, mo
   await expect(modal.locator("[data-campo-novo=\"Objeto\"]").getByText("Obrigatório nesta fase")).toBeVisible();
   await modal.getByLabel("Objeto").fill("Obra do teste e2e");
   await modal.getByLabel("Contratante").fill("Construtora E2E");
+  await anexarMinuta(modal);
   await modal.getByRole("button", { name: "Criar card" }).click();
 
   // Card abre no painel lateral, com URL própria

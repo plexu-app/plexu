@@ -1,4 +1,5 @@
 // Catálogo de tipos de campo e validação/normalização da config por tipo (puro; testável).
+import { normalizarAccept } from "./anexos";
 
 export const TIPOS_CAMPO: { tipo: string; rotulo: string; calculado?: boolean }[] = [
   { tipo: "text", rotulo: "Texto" },
@@ -120,6 +121,10 @@ function normalizarPorTipo(tipo: string, bruto: unknown, ctx: ContextoConfig): R
           ...(escopo === "parent" ? { parent_field: parent } : {}),
         },
       };
+    }
+    case "attachment": {
+      const accept = normalizarAccept(c.accept);
+      return accept ? { accept } : {};
     }
     case "lookup": {
       const l = (c.lookup ?? {}) as Record<string, unknown>;

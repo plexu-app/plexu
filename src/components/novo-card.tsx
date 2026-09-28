@@ -94,7 +94,7 @@ export function NovoCard({
     for (const c of vis) {
       if (!est[c.id]?.obrigatorio || preenchido(atuais, c)) continue;
       // Anexo obrigatório não pode ser preenchido enquanto não houver upload: é erro de configuração.
-      e[c.id] = c.type === "attachment" ? `${c.name} é obrigatório, mas o envio de anexos ainda não está disponível — corrija a configuração.` : "Obrigatório nesta fase";
+      e[c.id] = "Obrigatório nesta fase";
     }
     // Formato (regex) com a mensagem configurada no campo — não só a validação nativa do navegador.
     const deFormato = new Set<string>();
@@ -200,7 +200,15 @@ export function NovoCard({
                         aoMudar={() => formRef.current && setValores(valoresDoFormData(new FormData(formRef.current)))}
                       />
                     ) : (
-                      <CampoInput campo={c} valor={null} pessoas={pessoas} id={id} obrigatorio={obrigatorio} />
+                      <CampoInput
+                        campo={c}
+                        valor={null}
+                        pessoas={pessoas}
+                        id={id}
+                        obrigatorio={obrigatorio}
+                        anexos={{ ws, board, meta: {} }}
+                        aoMudar={() => formRef.current && setValores(valoresDoFormData(new FormData(formRef.current)))}
+                      />
                     )}
                     {erros[c.id] && (
                       <p className="text-xs text-destructive-strong" role="alert" data-erro-campo>

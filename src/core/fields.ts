@@ -1,6 +1,6 @@
 // Campos: validação por tipo, valores padrão, unicidade, sequence e campos calculados.
-import { and, eq, isNull, ne, sql } from "drizzle-orm";
-import { cards, sequences, workspaceMembers } from "../db/schema";
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { attachments, cards, sequences, workspaceMembers } from "../db/schema";
 import type { ExprCompilada, ExprContext, Registro } from "../lib/expr";
 import { emitirEvento } from "./events";
 import {
@@ -84,7 +84,7 @@ export function cnpjValido(cnpj: string): boolean {
 }
 
 /** Valida e normaliza um valor de entrada. null/""/[] limpam o campo (retornam null). */
-export async function validarValor(op: Op, q: Quadro, c: Campo, v: unknown): Promise<unknown> {
+export async function validarValor(op: Op, q: Quadro, c: Campo, v: unknown, cardId: string | null = null): Promise<unknown> {
   if (v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0)) return null;
   switch (c.type) {
     case "text":
@@ -158,9 +158,20 @@ export async function validarValor(op: Op, q: Quadro, c: Campo, v: unknown): Pro
       return [...new Set(lista as string[])];
     }
     case "attachment": {
-      const lista = Array.isArray(v) ? v : [v];
-      for (const id of lista) if (!ehUuid(id)) throw invalido(c, "id de anexo inválido");
-      return lista;
+      const lista = [...new Set((Array.isArray(v) ? v : [v]) as unknown[])];
+      for (const id of lista) if (typeof id !== "string" || !ehUuid(id)) throw invalido(c, "id de anexo inválido");
+      const ids = lista as string[];
+      // O anexo precisa existir, ser do mesmo workspace e não estar em uso em outro card.
+      const rows = await op.tx
+        .select({ id: attachments.id, workspaceId: attachments.workspaceId, cardId: attachments.cardId })
+        .from(attachments)
+        .where(inArray(attachments.id, ids));
+      for (const id of ids) {
+        const a = rows.find((r) => r.id === id);
+        if (!a || a.workspaceId !== q.workspaceId) throw invalido(c, "anexo não encontrado");
+        if (a.cardId && a.cardId !== cardId) throw invalido(c, "anexo já está em uso em outro card");
+      }
+      return ids;
     }
     default:
       if (typeof v === "function" || typeof v === "symbol" || typeof v === "bigint") throw invalido(c, "valor inválido");
@@ -176,7 +187,7 @@ export interface EntradaNormalizada {
 }
 
 /** Entrada por id ou slug → valores validados. Recusa campos desconhecidos e somente leitura. */
-export async function normalizarEntrada(op: Op, q: Quadro, entrada: Record<string, unknown>): Promise<EntradaNormalizada> {
+export async function normalizarEntrada(op: Op, q: Quadro, entrada: Record<string, unknown>, cardId: string | null = null): Promise<EntradaNormalizada> {
   const saida: EntradaNormalizada = { props: new Map(), relacoes: new Map() };
   for (const [chave, bruto] of Object.entries(entrada ?? {})) {
     const c = acharCampo(q, chave);
@@ -184,11 +195,24 @@ export async function normalizarEntrada(op: Op, q: Quadro, entrada: Record<strin
     if (TIPOS_SOMENTE_LEITURA.has(c.type)) {
       throw new CoreError("somente_leitura", `campo '${c.name}' (${c.type}) é somente leitura`, { campos: [c.id] });
     }
-    const v = await validarValor(op, q, c, bruto);
+    const v = await validarValor(op, q, c, bruto, cardId);
     if (c.type === "relation") saida.relacoes.set(c.id, (v as string[] | null) ?? []);
     else saida.props.set(c.id, v);
   }
   return saida;
+}
+
+/**
+ * Liga ao card os anexos provisórios (card_id nulo) usados nos campos de anexo. Um anexo só pode
+ * pertencer a um card: se outro card o pegou no meio do caminho, a escrita falha.
+ */
+export async function vincularAnexos(op: Op, q: Quadro, cardId: string, props: Record<string, unknown>): Promise<void> {
+  const ids = q.campos.filter((c) => c.type === "attachment").flatMap((c) => (Array.isArray(props[c.id]) ? (props[c.id] as string[]) : []));
+  if (!ids.length) return;
+  await op.tx.update(attachments).set({ cardId }).where(and(inArray(attachments.id, ids), isNull(attachments.cardId)));
+  const donos = await op.tx.select({ id: attachments.id, cardId: attachments.cardId }).from(attachments).where(inArray(attachments.id, ids));
+  const outro = donos.find((d) => d.cardId !== cardId);
+  if (outro) throw new CoreError("validacao", "anexo já está em uso em outro card");
 }
 
 // ---------------------------------------------------------------------------
