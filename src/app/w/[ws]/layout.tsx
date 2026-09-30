@@ -26,7 +26,7 @@ export default async function LayoutWorkspace({ children, params }: { children: 
         podeCriar={podeConfigurar(ctx) && !ctx.ws.arquivado}
         workspaces={workspaces.map((w) => ({ slug: w.slug, name: w.name }))}
         arquivados={arquivados.length}
-        ehOwner={ctx.papel === "owner"}
+        configuraWorkspace={podeConfigurar(ctx)}
         marca={<Marca tamanho={22} />}
       />
       <div className="flex min-h-screen flex-col pl-60 transition-[padding] recolhida:pl-14">{children}</div>
