@@ -89,7 +89,8 @@ export interface AutomacaoPendente {
 /**
  * Automação do motor v1 (src/lib/automacoes.ts) com keys no lugar de ids: fases e campos por key do
  * board; relações como em rollup.via ("campo" deste board ou "board.campo"); em all_children_in_phase,
- * a fase é do board dos filhos; em create_related_card, board/fase/campos são do board do novo card.
+ * a fase é do board dos filhos; em create_related_card, board/fase/campos são do board do novo card;
+ * com target pai/filhos (move_card, set_field, add_comment), fase e campo são do board do alvo.
  */
 export interface AutomacaoConvertida {
   key: string;
@@ -146,8 +147,16 @@ export function referenciasAutomacao(a: AutomacaoConvertida, b: BoardTemplate, t
   }
   const steps = (a.steps ?? []).map((p0) => {
     const p: Record<string, unknown> = { ...p0 };
-    if (p.type === "move_card") p.phase = fase(b.key, p.phase);
-    if (p.type === "set_field") p.field = campo(b.key, p.field);
+    // Alvo pai/filhos: relação como em rollup.via; fase e campo são do board do outro lado.
+    let bAlvo = b.key;
+    const t = p.target as { type?: string; relation?: string } | undefined;
+    if (t?.type && t.type !== "self") {
+      const rel = relacao(t.relation);
+      p.target = { type: t.type, relation: rel.id };
+      bAlvo = rel.outro || b.key;
+    }
+    if (p.type === "move_card") p.phase = fase(bAlvo, p.phase);
+    if (p.type === "set_field") p.field = campo(bAlvo, p.field);
     if (p.type === "create_related_card") {
       const alvo = String(p.board ?? "");
       if (!boards.has(alvo)) erros.push(`board ${alvo} não existe no template`);

@@ -842,8 +842,9 @@ class Conversor {
    * - gatilhos: card_created; card_moved (entrou na fase); card_left_phase; field_updated (campos
    *   simples); all_children_in_phase + move_parent_card (vira automação do pai);
    * - ações: update_card_field no próprio card (valor fixo, vazio ou cópia de um campo do card),
-   *   move_single_card, create_card/create_connected_card para um board do conjunto;
-   * - não cabem: e-mail com modelo e HTTP (a API não exporta o modelo nem URL/corpo), ações em outro card.
+   *   move_single_card, move_parent_card (move_card com alvo pai), create_card/create_connected_card
+   *   para um board do conjunto;
+   * - não cabem: e-mail com modelo e HTTP (a API não exporta o modelo nem URL/corpo), update em outro card.
    */
   automacaoV1(b: BoardConv, a: PfAutomacao): { auto: AutomacaoConvertida; alvo: BoardConv } | { motivo: string } | null {
     if (a.action_id === "send_email_template") return { motivo: "e-mail com modelo: o conteúdo do modelo não é exportável via API" };
@@ -961,7 +962,21 @@ class Conversor {
       const fase = faseDe(a.action_params?.to_phase_id, alvo);
       return auto(b, trigger, [{ type: "create_related_card", board: alvo.key, relation, phase: fase, fields }]);
     }
-    if (a.action_id === "move_parent_card") return { motivo: "move o card pai: o motor v1 age só no card do gatilho" };
+    if (a.action_id === "move_parent_card") {
+      // Mover o pai: move_card com alvo "pai" pela relação em que o outro board é o pai.
+      const pai = this.porRepo.get(a.action_repo_v2?.id ?? "");
+      if (!pai) return { motivo: `move o card pai: pipe do pai (${a.action_repo_v2?.name ?? a.action_repo_v2?.id ?? "?"}) fora do conjunto exportado` };
+      const fasePai = faseDe(a.action_params?.to_phase_id, pai);
+      if (!fasePai) return { motivo: "move o card pai: fase de destino fora do board pai" };
+      const rels = [
+        // conexão no board pai apontando para este (relação comum: a origem é o pai)
+        ...pai.tpl.fields.filter((f) => f.type === "relation" && f.relation?.board === b.key && !f.relation?.is_parent).map((f) => (pai === b ? f.key : `${pai.key}.${f.key}`)),
+        // relação deste board marcada is_parent apontando para o pai
+        ...b.tpl.fields.filter((f) => f.type === "relation" && f.relation?.board === pai.key && f.relation?.is_parent).map((f) => f.key),
+      ];
+      if (rels.length !== 1) return { motivo: `move o card pai: ${rels.length ? "mais de uma" : "nenhuma"} relação entre ${nomeBoard(pai)} e ${nomeBoard(b)}` };
+      return auto(b, trigger, [{ type: "move_card", phase: fasePai, target: { type: "parent", relation: rels[0] } }]);
+    }
     return { motivo: `ação ${a.action_id} sem equivalente no motor v1` };
   }
 

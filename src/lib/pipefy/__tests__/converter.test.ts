@@ -453,6 +453,22 @@ describe("automações que cabem no motor v1", () => {
         action_params: { to_phase_id: "83" },
       }),
       auto("e1", "Avisar", { event_id: "card_moved", event_repo: { id: "9000" }, action_id: "send_email_template", event_params: { to_phase_id: "82" } }),
+      auto("mp", "Mover solicitação ao iniciar tarefa", {
+        event_id: "card_moved",
+        event_repo: { id: "9100" },
+        action_id: "move_parent_card",
+        action_repo_v2: { id: "9000" },
+        event_params: { to_phase_id: "92" },
+        action_params: { to_phase_id: "82" },
+      }),
+      auto("mf", "Mover pai de fora", {
+        event_id: "card_moved",
+        event_repo: { id: "9100" },
+        action_id: "move_parent_card",
+        action_repo_v2: { id: "7777", name: "Pipe não exportado" },
+        event_params: { to_phase_id: "92" },
+        action_params: { to_phase_id: "77" },
+      }),
       auto("x1", "Texto composto", {
         event_id: "card_created",
         event_repo: { id: "9000" },
@@ -488,7 +504,19 @@ describe("automações que cabem no motor v1", () => {
       ["Avisar", "e-mail com modelo: o conteúdo do modelo não é exportável via API"],
       ["Texto composto", "valor de Cópia do título mistura texto e campos ou vem de card conectado"],
     ]);
-    expect(r.relatorio.totais).toMatchObject({ automacoesV1: 3, pendentes: 2 });
-    expect(relatorioMarkdown(r.relatorio)).toContain("3 automações do Plexu");
+    expect(r.relatorio.totais).toMatchObject({ automacoesV1: 4, pendentes: 3 });
+    expect(relatorioMarkdown(r.relatorio)).toContain("4 automações do Plexu");
+  });
+
+  it("mover o pai: move_card com alvo pai pela conexão do board pai; pipe do pai fora do conjunto fica pendente", () => {
+    const tarefas = r.template.boards.find((b) => b.name === "Tarefas")!;
+    const [mp] = (tarefas.automations ?? []).filter((a) => a.status === "convertida");
+    expect(mp).toMatchObject({
+      name: "Mover solicitação ao iniciar tarefa",
+      trigger: { type: "card_entered_phase", phase: "feita" },
+      steps: [{ type: "move_card", phase: "em_execucao", target: { type: "parent", relation: "solicitacoes.tarefas" } }],
+    });
+    const [mf] = (tarefas.automations ?? []).filter((a) => a.status === "pendente");
+    expect(mf.note).toBe("move o card pai: pipe do pai (Pipe não exportado) fora do conjunto exportado");
   });
 });

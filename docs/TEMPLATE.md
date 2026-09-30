@@ -81,7 +81,7 @@ Tudo é referenciado por `key`, nunca por UUID. A key de campo é o identificado
 ```
 
 - `env`: `draft` (padrão, não dispara), `test` ou `published`.
-- Fases e campos são keys deste board; relações como em `rollup.via` (`"campo"` ou `"board.campo"`). Em `all_children_in_phase`, `phase` é do board dos filhos; em `create_related_card`, `board`, `phase` e as chaves de `fields` são do board do novo card (valores em CEL sobre o card do gatilho).
+- Fases e campos são keys deste board; relações como em `rollup.via` (`"campo"` ou `"board.campo"`). Em `all_children_in_phase`, `phase` é do board dos filhos; em `create_related_card`, `board`, `phase` e as chaves de `fields` são do board do novo card (valores em CEL sobre o card do gatilho); com `target` pai/filhos (`{ "type": "parent"|"children", "relation": "<via>" }`), `phase`/`field` são do board do card alvo.
 
 `"status": "pendente"`: sem equivalente ainda; o importador só conta.
 
@@ -143,7 +143,7 @@ Fases (ordem, final, destinos permitidos), campos (tipo, obrigatório, editável
 | `move_single_card` ao entrar na fase P, se condição, de volta para fase anterior | regra `can_enter(P) := !(condição)`; a mesma condição em várias fases vira **uma** regra |
 | título do card = conexão | campo `lookup` (`ref`, `path: "titulo"`) pela conexão, usado como título |
 | `update_card_field` no filho da série copiando um campo simples do pai | o campo do filho vira `lookup` `ref` pela relação da série (a série de automações deixa de existir) |
-| automação que cabe no motor v1: gatilho `card_created`, `card_moved` (entrou na fase), `card_left_phase`, `field_updated` (campos simples) com ação `update_card_field` no próprio card (valor fixo, vazio ou cópia de um campo), `move_single_card`, `create_card`/`create_connected_card` (board do conjunto; conexão pela única relação entre os boards); `all_children_in_phase` + `move_parent_card` | `automations` com `status: "convertida"` (publicada se ativa no Pipefy; rascunho se inativa); a de filhos vai para o board pai |
+| automação que cabe no motor v1: gatilho `card_created`, `card_moved` (entrou na fase), `card_left_phase`, `field_updated` (campos simples) com ação `update_card_field` no próprio card (valor fixo, vazio ou cópia de um campo), `move_single_card`, `move_parent_card` (`move_card` com `target` pai pela conexão do board pai), `create_card`/`create_connected_card` (board do conjunto; conexão pela única relação entre os boards); `all_children_in_phase` + `move_parent_card` | `automations` com `status: "convertida"` (publicada se ativa no Pipefy; rascunho se inativa); a de filhos vai para o board pai |
 | demais automações | `automations` com `status: "pendente"` e o motivo em `note` (e-mail com modelo e HTTP: conteúdo não exportável; ação em outro card; texto misturado com campos; condição não convertida); séries numeradas iguais viram uma só |
 
 Condições do Pipefy viram CEL: OU entre grupos de `expressions_structure`, E dentro do grupo; `blank`/`present` → `== null`/`!= null`; `equals`/`not_equals` (em seleção múltipla, `in`); comparações numéricas; `contains`/`not_contains`; `current_phase` → `fase`; campo de um card conectado (`conexao.campo`) → `filhos("rel").algum(p, …)` (na série, generaliza o item NN para todos os filhos; o relatório avisa).
