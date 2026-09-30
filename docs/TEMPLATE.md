@@ -12,7 +12,7 @@ pnpm template:import <arquivo.json> [--workspace "Nome"] [--membro email@exemplo
 ```
 
 - `template:export`: padrão `--workspace demo`, saída no terminal. Exporte juntos os boards ligados por relações e rollups; relação para um board fora da lista sai com o slug dele.
-- `template:import`: cria o workspace se não existir (padrão: nome do template). `--membro` adiciona um usuário existente como owner. Valida tudo antes de gravar; se algo falhar, nada é gravado. Cada entidade criada emite `config.changed` (decisão 13). Automações do template não são criadas (ainda não há motor): o comando só as conta.
+- `template:import`: cria o workspace se não existir (padrão: nome do template). `--membro` adiciona um usuário existente como owner. Valida tudo antes de gravar; se algo falhar, nada é gravado. Cada entidade criada emite `config.changed` (decisão 13). Automações `convertida` são criadas (no ambiente do template, padrão rascunho); as `pendente` só são contadas.
 - Ambos usam `DATABASE_URL` (padrão: banco do demo, `plexu`).
 
 ## Formato
@@ -65,16 +65,32 @@ Tudo é referenciado por `key`, nunca por UUID. A key de campo é o identificado
 | `lookup` | valor de card relacionado: `{ "via", "path", "mode": "ref"|"copy" }`. `via` como em `rollup`; `path` é o identificador de um campo no card ligado (ou `titulo`, `fase`, `status`). `ref` acompanha o card ligado; `copy` grava o valor quando a ligação é criada ou trocada. `"editable_writeback": true` (só com `ref`) torna o espelho editável: editar grava no card de origem pelo core, com as regras `can_edit` de lá, e todos os espelhos acompanham; fica somente leitura se não houver exatamente um card de origem ligado ou se a origem não puder ser editada. Um card ligado → valor; vários → lista. Pode ser o título do board |
 | `phase_settings` | exceções por fase: `[{ "phase", "visible", "editable", "required" }]` (`null` = sem exceção) |
 
-### Automações (reservado)
+### Automações
 
-O Plexu ainda não executa automações. O template guarda as que não têm equivalente em regra, rollup ou texto calculado, para revisão e para o futuro motor (decisão 7):
+`"status": "convertida"`: automação do motor v1 (formato de `src/lib/automacoes.ts`, ver ARQUITETURA → Automações), com keys no lugar de ids. O importador cria a automação; o exportador a devolve igual.
 
 ```json
-{ "key": "a1", "name": "Avisar comprador", "status": "pendente",
+{ "key": "a1", "name": "Frete para urgentes", "status": "convertida", "env": "published",
+  "trigger": { "type": "card_entered_phase", "phase": "aprovacao" },
+  "condition": "card.urgente == true",
+  "steps": [
+    { "type": "set_field", "field": "motivo", "value": "urgente aprovado" },
+    { "type": "create_related_card", "board": "itens", "relation": "itens", "phase": null, "fields": { "descricao": "\"Frete\"" } }
+  ],
+  "suppress_triggers": false }
+```
+
+- `env`: `draft` (padrão, não dispara), `test` ou `published`.
+- Fases e campos são keys deste board; relações como em `rollup.via` (`"campo"` ou `"board.campo"`). Em `all_children_in_phase`, `phase` é do board dos filhos; em `create_related_card`, `board`, `phase` e as chaves de `fields` são do board do novo card (valores em CEL sobre o card do gatilho).
+
+`"status": "pendente"`: sem equivalente ainda; o importador só conta.
+
+```json
+{ "key": "p1", "name": "Avisar comprador", "status": "pendente",
   "trigger": { "event": "card_created", "phase": null, "fields": [] },
   "condition": "card.urgente == true",
   "actions": [{ "type": "send_email_template", "params": {} }],
-  "note": "opcional" }
+  "note": "e-mail com modelo: o conteúdo do modelo não é exportável via API" }
 ```
 
 ## Importar do Pipefy
@@ -127,7 +143,8 @@ Fases (ordem, final, destinos permitidos), campos (tipo, obrigatório, editável
 | `move_single_card` ao entrar na fase P, se condição, de volta para fase anterior | regra `can_enter(P) := !(condição)`; a mesma condição em várias fases vira **uma** regra |
 | título do card = conexão | campo `lookup` (`ref`, `path: "titulo"`) pela conexão, usado como título |
 | `update_card_field` no filho da série copiando um campo simples do pai | o campo do filho vira `lookup` `ref` pela relação da série (a série de automações deixa de existir) |
-| demais automações | `automations` com `status: "pendente"`; séries numeradas iguais viram uma só |
+| automação que cabe no motor v1: gatilho `card_created`, `card_moved` (entrou na fase), `card_left_phase`, `field_updated` (campos simples) com ação `update_card_field` no próprio card (valor fixo, vazio ou cópia de um campo), `move_single_card`, `create_card`/`create_connected_card` (board do conjunto; conexão pela única relação entre os boards); `all_children_in_phase` + `move_parent_card` | `automations` com `status: "convertida"` (publicada se ativa no Pipefy; rascunho se inativa); a de filhos vai para o board pai |
+| demais automações | `automations` com `status: "pendente"` e o motivo em `note` (e-mail com modelo e HTTP: conteúdo não exportável; ação em outro card; texto misturado com campos; condição não convertida); séries numeradas iguais viram uma só |
 
 Condições do Pipefy viram CEL: OU entre grupos de `expressions_structure`, E dentro do grupo; `blank`/`present` → `== null`/`!= null`; `equals`/`not_equals` (em seleção múltipla, `in`); comparações numéricas; `contains`/`not_contains`; `current_phase` → `fase`; campo de um card conectado (`conexao.campo`) → `filhos("rel").algum(p, …)` (na série, generaliza o item NN para todos os filhos; o relatório avisa).
 

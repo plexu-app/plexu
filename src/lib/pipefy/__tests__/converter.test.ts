@@ -391,3 +391,104 @@ describe("preencher automaticamente (conexão)", () => {
     expect(relatorioMarkdown(r.relatorio)).toContain("### Avisos");
   });
 });
+
+describe("automações que cabem no motor v1", () => {
+  // Pipe de solicitações com filhos (tarefas, pipe) e automações simples.
+  const TAREFAS: PfExport = {
+    fonte: "pipefy",
+    id: "9100",
+    tipo: "pipe",
+    repo: {
+      id: "9100",
+      name: "Tarefas",
+      start_form_fields: [campo("t_titulo", "910", "Título", "short_text")],
+      phases: [
+        { id: "91", name: "Aberta", index: 0, fields: [] },
+        { id: "92", name: "Feita", index: 1, done: true, fields: [] },
+      ],
+    },
+    automacoes: [],
+  };
+  const SOL: PfExport = {
+    fonte: "pipefy",
+    id: "9000",
+    tipo: "pipe",
+    repo: {
+      id: "9000",
+      name: "Solicitações",
+      start_form_fields: [
+        campo("s_titulo", "900", "Título", "short_text"),
+        campo("s_status", "901", "Situação", "short_text"),
+        campo("s_urgente", "902", "Urgente", "radio_vertical", { options: ["Sim", "Não"] }),
+        campo("s_copia", "903", "Cópia do título", "short_text"),
+        campo("s_tarefas", "904", "Tarefas", "connector", { connectedRepo: { id: "9100", name: "Tarefas" }, canConnectMultiples: true }),
+      ],
+      phases: [
+        { id: "81", name: "Nova", index: 0, fields: [] },
+        { id: "82", name: "Em execução", index: 1, fields: [] },
+        { id: "83", name: "Concluída", index: 2, done: true, fields: [] },
+      ],
+    },
+    automacoes: [
+      auto("u1", "Marcar situação", {
+        event_id: "card_created",
+        event_repo: { id: "9000" },
+        action_repo_v2: { id: "9000" },
+        condition: { expressions: [{ structure_id: "0", field_address: "902", operation: "equals", value: "Sim" }], expressions_structure: [["0"]] },
+        action_params: { field_map: [{ fieldId: "901", inputMode: "fixed_value", value: "Prioritária" }, { fieldId: "903", inputMode: "copy_from", value: "%{900}" }] },
+      }),
+      auto("m1", "Mover urgente", {
+        event_id: "field_updated",
+        event_repo: { id: "9000" },
+        action_id: "move_single_card",
+        event_params: { triggerFields: [{ id: "902" }] },
+        action_params: { to_phase_id: "82" },
+      }),
+      auto("f1", "Concluir quando as tarefas acabam", {
+        event_id: "all_children_in_phase",
+        event_repo: { id: "9100" },
+        action_id: "move_parent_card",
+        action_repo_v2: { id: "9000" },
+        event_params: { to_phase_id: "92" },
+        action_params: { to_phase_id: "83" },
+      }),
+      auto("e1", "Avisar", { event_id: "card_moved", event_repo: { id: "9000" }, action_id: "send_email_template", event_params: { to_phase_id: "82" } }),
+      auto("x1", "Texto composto", {
+        event_id: "card_created",
+        event_repo: { id: "9000" },
+        action_repo_v2: { id: "9000" },
+        action_params: { field_map: [{ fieldId: "903", inputMode: "copy_from", value: "Cópia: %{900}" }] },
+      }),
+    ],
+  };
+  const r = converterPipefy([SOL, TAREFAS]);
+  const sol = r.template.boards.find((b) => b.name === "Solicitações")!;
+  const conv = (sol.automations ?? []).filter((a) => a.status === "convertida");
+  const pend = (sol.automations ?? []).filter((a) => a.status === "pendente");
+
+  it("gatilho, condição e ações viram automação publicada; o template valida", () => {
+    expect(validarTemplate(r.template)).toEqual([]);
+    expect(conv.map((a) => a.name)).toEqual(["Marcar situação", "Mover urgente", "Concluir quando as tarefas acabam"]);
+    expect(conv[0]).toMatchObject({
+      env: "published",
+      trigger: { type: "card_created" },
+      condition: 'card.urgente == "Sim"',
+      steps: [
+        { type: "set_field", field: "situacao", value: "Prioritária" },
+        { type: "set_field", field: "copia_do_titulo", expr: "card.titulo" },
+      ],
+    });
+    expect(conv[1]).toMatchObject({ trigger: { type: "field_updated", fields: ["urgente"] }, steps: [{ type: "move_card", phase: "em_execucao" }] });
+    // Todos os filhos na fase → automação do board pai, pela relação
+    expect(conv[2]).toMatchObject({ trigger: { type: "all_children_in_phase", relation: "tarefas", phase: "feita" }, steps: [{ type: "move_card", phase: "concluida" }] });
+  });
+
+  it("o que não cabe fica pendente com o motivo; relatório conta automações do Plexu", () => {
+    expect(pend.map((a) => [a.name, a.note])).toEqual([
+      ["Avisar", "e-mail com modelo: o conteúdo do modelo não é exportável via API"],
+      ["Texto composto", "valor de Cópia do título mistura texto e campos ou vem de card conectado"],
+    ]);
+    expect(r.relatorio.totais).toMatchObject({ automacoesV1: 3, pendentes: 2 });
+    expect(relatorioMarkdown(r.relatorio)).toContain("3 automações do Plexu");
+  });
+});

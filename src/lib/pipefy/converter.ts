@@ -4,14 +4,14 @@
 // "move de volta se"). Mapeamentos em docs/TEMPLATE.md (seção Pipefy).
 import { normalizarAccept } from "../anexos";
 import { slugCampo, slugify } from "../slug";
-import { VERSAO_TEMPLATE, type AutomacaoTemplate, type BoardTemplate, type CampoTemplate, type RegraTemplate, type Template } from "../template";
+import { VERSAO_TEMPLATE, type AutomacaoConvertida, type AutomacaoPendente, type BoardTemplate, type CampoTemplate, type RegraTemplate, type Template } from "../template";
 import type { PfAutomacao, PfCampo, PfCondicao, PfCondicional, PfExport, PfFase } from "./export";
 
 // ---------------------------------------------------------------------------
 // Relatório
 // ---------------------------------------------------------------------------
 
-export type DestinoAutomacao = "regra" | "rollup" | "dynamic_text" | "lookup" | "absorvida" | "pendente";
+export type DestinoAutomacao = "regra" | "rollup" | "dynamic_text" | "lookup" | "automacao" | "absorvida" | "pendente";
 
 export interface LinhaCampo {
   origem: string;
@@ -53,6 +53,8 @@ export interface RelatorioBoard {
   textosCalculados: number;
   /** Campos que viraram "valor de card relacionado" (lookup). */
   lookups: number;
+  /** Automações do Pipefy que viraram automações do Plexu (motor v1). */
+  automacoesV1: number;
   pendentes: number;
 }
 
@@ -60,7 +62,7 @@ export interface Relatorio {
   anonimizado: boolean;
   boards: RelatorioBoard[];
   naoExportavel: string[];
-  totais: { automacoes: number; ativas: number; regras: number; regrasConfig: number; rollups: number; textosCalculados: number; lookups: number; absorvidas: number; pendentes: number };
+  totais: { automacoes: number; ativas: number; regras: number; regrasConfig: number; rollups: number; textosCalculados: number; lookups: number; automacoesV1: number; absorvidas: number; pendentes: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -265,6 +267,7 @@ class Conversor {
           rollups: soma((r) => r.rollups),
           textosCalculados: soma((r) => r.textosCalculados),
           lookups: soma((r) => r.lookups),
+          automacoesV1: soma((r) => r.automacoesV1),
           absorvidas: soma((r) => r.automacoes.filter((a) => a.destino === "absorvida").length),
           pendentes: soma((r) => r.pendentes),
         },
@@ -324,6 +327,7 @@ class Conversor {
         rollups: 0,
         textosCalculados: 0,
         lookups: 0,
+        automacoesV1: 0,
         pendentes: 0,
       },
     };
@@ -750,6 +754,18 @@ class Conversor {
         continue;
       }
 
+      // Cabe no motor de automações v1: vira automação do Plexu (no board onde age).
+      const v1 = this.automacaoV1(b, a);
+      if (v1 && "auto" in v1) {
+        v1.alvo.tpl.automations = [...(v1.alvo.tpl.automations ?? []), v1.auto];
+        v1.alvo.rel.automacoesV1++;
+        linha.destino = "automacao";
+        linha.ref = `${v1.alvo.key}.${v1.auto.key}`;
+        if (v1.auto.note) linha.nota = v1.auto.note;
+        continue;
+      }
+      if (v1) linha.nota = v1.motivo;
+
       // Sem equivalente: automação pendente (séries de nomes iguais viram uma só)
       const chave = `${a.event_id}|${a.action_id}|${nomeBase(a.name)}`;
       const p = pendentes.get(chave) ?? { a, linhas: [] };
@@ -783,7 +799,7 @@ class Conversor {
       const key = `a${++n}`;
       const r = this.condicao(b, a.condition);
       const fase = this.keyFase.get(a.event_params?.to_phase_id ?? a.event_params?.inPhaseId ?? "")?.key ?? null;
-      const auto: AutomacaoTemplate = {
+      const auto: AutomacaoPendente = {
         key,
         name: linhas.length > 1 ? `${nomeBase(a.name).replace(/#/g, "N")} (série de ${linhas.length})` : a.name,
         trigger: {
@@ -803,15 +819,150 @@ class Conversor {
           },
         ],
         status: "pendente",
-        ...(typeof r === "string" ? { note: `condição não convertida: ${r}` } : linhas.length > 1 ? { note: "série de automações numeradas: no Plexu, uma por card filho" } : {}),
       };
-      b.tpl.automations!.push(auto);
+      const nota = [
+        typeof r === "string" ? `condição não convertida: ${r}` : null,
+        linhas.length > 1 ? "série de automações numeradas: no Plexu, uma por card filho" : null,
+        linhas[0].nota ?? null, // motivo de não caber no motor v1
+      ].filter(Boolean);
+      if (nota.length) auto.note = [...new Set(nota)].join("; ");
+      b.tpl.automations = [...(b.tpl.automations ?? []), auto];
       b.rel.pendentes++;
       for (const l of linhas) {
         l.ref = key;
-        if (linhas.length > 1) l.nota = `agrupada: ${linhas.length} automações → 1 pendente`;
+        if (linhas.length > 1) l.nota = [l.nota, `agrupada: ${linhas.length} automações → 1 pendente`].filter(Boolean).join("; ");
       }
     }
+  }
+
+  /**
+   * Automação que cabe no motor v1 (docs/ARQUITETURA.md, Automações): gatilho, condição e ações com
+   * equivalente direto. Devolve a automação convertida (no board onde ela age), um motivo para ficar
+   * pendente, ou null quando não há o que tentar.
+   * - gatilhos: card_created; card_moved (entrou na fase); card_left_phase; field_updated (campos
+   *   simples); all_children_in_phase + move_parent_card (vira automação do pai);
+   * - ações: update_card_field no próprio card (valor fixo, vazio ou cópia de um campo do card),
+   *   move_single_card, create_card/create_connected_card para um board do conjunto;
+   * - não cabem: e-mail com modelo e HTTP (a API não exporta o modelo nem URL/corpo), ações em outro card.
+   */
+  automacaoV1(b: BoardConv, a: PfAutomacao): { auto: AutomacaoConvertida; alvo: BoardConv } | { motivo: string } | null {
+    if (a.action_id === "send_email_template") return { motivo: "e-mail com modelo: o conteúdo do modelo não é exportável via API" };
+    if (a.action_id === "send_http_request") return { motivo: "requisição HTTP: a API exporta só o método e o host (caminho, headers e corpo não)" };
+    const r = this.condicao(b, a.condition);
+    if (typeof r === "string") return { motivo: `condição não convertida: ${r}` };
+    if (r.generalizada) return { motivo: "condição sobre item de série generalizada: revisar à mão" };
+    const env = a.active === false ? ("draft" as const) : ("published" as const);
+    const nomeBoard = (x: BoardConv) => x.tpl.name;
+    const faseDe = (id: string | null | undefined, board: BoardConv) => {
+      const f = id ? this.keyFase.get(id) : undefined;
+      return f && f.board === board ? f.key : null;
+    };
+    const campoSimples = (x: BoardConv, id: string) => {
+      const cc = x.porRef.get(id);
+      return cc?.campo && !cc.serie && !["rollup", "dynamic_text", "lookup", "sequence"].includes(cc.campo.type) ? cc.campo : null;
+    };
+    /** Valor de um field_map: literal, vazio (null) ou cópia pura de um campo deste card (CEL). */
+    const valor = (fm: { inputMode?: string | null; value?: string | null }): { value?: unknown; expr?: string } | null => {
+      const v = (fm.value ?? "").trim();
+      if (!v) return { value: null };
+      const refs = [...v.matchAll(/%\{([^}|]+)\}/g)].map((m) => m[1]);
+      if (!refs.length) return { value: v };
+      if (refs.length === 1 && v === `%{${refs[0]}}` && !refs[0].includes(".")) {
+        const c = b.porRef.get(refs[0]);
+        return c?.campo && !c.serie ? { expr: `card.${c.campo.key}` } : null;
+      }
+      return null; // texto misturado com campos, ou campo de card conectado
+    };
+    const auto = (alvo: BoardConv, trigger: AutomacaoConvertida["trigger"], steps: AutomacaoConvertida["steps"], nota?: string) => ({
+      alvo,
+      auto: {
+        key: `v${(alvo.tpl.automations ?? []).filter((x) => x.status === "convertida").length + 1}`,
+        name: a.name.replace(/\(c[óo]pia \d+\)/gi, "").trim(),
+        status: "convertida" as const,
+        env,
+        trigger,
+        ...(r.expr ? { condition: r.expr } : {}),
+        steps,
+        ...(nota ? { note: nota } : {}),
+      },
+    });
+
+    // Todos os filhos na fase → move o pai: automação do board pai.
+    if (a.event_id === "all_children_in_phase") {
+      if (a.action_id !== "move_parent_card") return { motivo: "todos os filhos na fase: só mover o pai tem equivalente" };
+      const faseFilho = this.keyFase.get(a.event_params?.to_phase_id ?? a.event_params?.inPhaseId ?? "");
+      const pai = this.porRepo.get(a.action_repo_v2?.id ?? "");
+      const fasePai = pai ? faseDe(a.action_params?.to_phase_id, pai) : null;
+      if (!faseFilho || !pai || !fasePai) return { motivo: "fase dos filhos ou do pai fora do conjunto exportado" };
+      const rels = [
+        ...pai.tpl.fields.filter((f) => f.type === "relation" && f.relation?.board === faseFilho.board.key).map((f) => f.key),
+        ...faseFilho.board.tpl.fields.filter((f) => f.type === "relation" && f.relation?.board === pai.key).map((f) => `${faseFilho.board.key}.${f.key}`),
+      ];
+      if (rels.length !== 1) return { motivo: `${rels.length ? "mais de uma" : "nenhuma"} relação entre ${nomeBoard(pai)} e ${nomeBoard(faseFilho.board)}` };
+      if (r.expr) return { motivo: "condição sobre o filho não se aplica ao pai: revisar à mão" };
+      return auto(pai, { type: "all_children_in_phase", relation: rels[0], phase: faseFilho.key }, [{ type: "move_card", phase: fasePai }]);
+    }
+
+    let trigger: AutomacaoConvertida["trigger"];
+    if (a.event_id === "card_created") trigger = { type: "card_created" };
+    else if (a.event_id === "card_moved") {
+      const f = faseDe(a.event_params?.to_phase_id, b);
+      if (!f) return { motivo: "fase do gatilho fora deste board" };
+      trigger = { type: "card_entered_phase", phase: f };
+    } else if (a.event_id === "card_left_phase") {
+      const f = faseDe(a.event_params?.fromPhaseId ?? a.event_params?.to_phase_id, b);
+      if (!f) return { motivo: "fase do gatilho fora deste board" };
+      trigger = { type: "card_left_phase", phase: f };
+    } else if (a.event_id === "field_updated") {
+      const ids = (a.event_params?.triggerFields ?? []).map((t) => t.id);
+      const campos = ids.map((id) => campoSimples(b, id)?.key ?? null);
+      if (campos.some((c) => !c)) return { motivo: "campo do gatilho é de série ou sem equivalente" };
+      trigger = { type: "field_updated", fields: campos as string[] };
+    } else return { motivo: `gatilho ${a.event_id} sem equivalente no motor v1` };
+
+    const fms = a.action_params?.field_map ?? [];
+    if (a.action_id === "move_single_card") {
+      const f = faseDe(a.action_params?.to_phase_id, b);
+      if (!f) return { motivo: "fase de destino fora deste board" };
+      return auto(b, trigger, [{ type: "move_card", phase: f }]);
+    }
+    if (a.action_id === "update_card_field") {
+      if (a.action_repo_v2?.id && a.action_repo_v2.id !== b.exp.repo.id) return { motivo: "atualiza outro card: o motor v1 age só no card do gatilho" };
+      const steps: AutomacaoConvertida["steps"] = [];
+      for (const fm of fms) {
+        const campo = campoSimples(b, fm.fieldId);
+        const v = valor(fm);
+        if (!campo) return { motivo: `campo ${this.nomeCampo(fm.fieldId)} é de série, calculado ou sem equivalente` };
+        if (!v) return { motivo: `valor de ${campo.name} mistura texto e campos ou vem de card conectado` };
+        steps.push({ type: "set_field", field: campo.key, ...v });
+      }
+      return steps.length ? auto(b, trigger, steps) : null;
+    }
+    if (a.action_id === "create_card" || a.action_id === "create_connected_card") {
+      const alvo = this.porRepo.get(a.action_repo_v2?.id ?? "");
+      if (!alvo) return { motivo: "board do novo card fora do conjunto exportado" };
+      const fields: Record<string, string> = {};
+      for (const fm of fms) {
+        const campo = campoSimples(alvo, fm.fieldId);
+        const v = valor(fm);
+        if (!campo || campo.type === "relation") continue; // conexões do novo card: pela relação abaixo
+        if (!v) return { motivo: `valor de ${campo.name} mistura texto e campos ou vem de card conectado` };
+        fields[campo.key] = v.expr ?? (v.value === null ? "null" : JSON.stringify(v.value));
+      }
+      let relation: string | null = null;
+      if (a.action_id === "create_connected_card") {
+        const rels = [
+          ...b.tpl.fields.filter((f) => f.type === "relation" && f.relation?.board === alvo.key).map((f) => f.key),
+          ...(alvo === b ? [] : alvo.tpl.fields.filter((f) => f.type === "relation" && f.relation?.board === b.key).map((f) => `${alvo.key}.${f.key}`)),
+        ];
+        if (rels.length !== 1) return { motivo: `${rels.length ? "mais de uma" : "nenhuma"} relação entre ${nomeBoard(b)} e ${nomeBoard(alvo)}` };
+        relation = rels[0];
+      }
+      const fase = faseDe(a.action_params?.to_phase_id, alvo);
+      return auto(b, trigger, [{ type: "create_related_card", board: alvo.key, relation, phase: fase, fields }]);
+    }
+    if (a.action_id === "move_parent_card") return { motivo: "move o card pai: o motor v1 age só no card do gatilho" };
+    return { motivo: `ação ${a.action_id} sem equivalente no motor v1` };
   }
 
   /**
