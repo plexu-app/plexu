@@ -48,6 +48,14 @@ async function fluxo(page: Page, { sufixo, nomeAuto, nomeAcao, objeto }: { sufix
   await expect(editor.getByLabel("Gatilho")).toHaveValue("card_created");
   await editor.getByLabel("Adicionar passo").selectOption({ label: "Comentar no card" });
   await editor.getByLabel("Comentário (passo 1)").fill(`Automação ${sufixo}: {{ card.objeto }}`);
+  // Alvo do passo: com "filhos via Parcelas", os campos oferecidos são os do board das parcelas
+  await editor.getByLabel("Adicionar passo").selectOption({ label: "Preencher campo" });
+  await expect(editor.getByLabel("Card alvo (passo 2)")).toHaveValue("self");
+  await expect(editor.getByLabel("Campo (passo 2)").locator("option", { hasText: "Objeto" })).toHaveCount(1);
+  await editor.getByLabel("Card alvo (passo 2)").selectOption({ label: "Filhos via Parcelas (Parcelas)" });
+  await expect(editor.getByLabel("Campo (passo 2)").locator("option", { hasText: "Objeto" })).toHaveCount(0);
+  await expect(editor.getByLabel("Campo (passo 2)").locator("option", { hasText: "Valor" })).toHaveCount(1);
+  await editor.getByRole("button", { name: "Remover passo 2" }).click();
   await editor.getByRole("button", { name: "Salvar automação" }).click();
   await expect(page.getByText("Automação criada")).toBeVisible();
   const linha = page.locator(`[data-automacao="${nomeAuto}"]`);

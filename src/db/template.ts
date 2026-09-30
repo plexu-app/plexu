@@ -369,6 +369,8 @@ export async function exportarTemplate(wsSlug: string, boardSlugs: string[], nom
     if (g.relation) g.relation = refRelativa(g.relation, boardId);
     const steps = ((a.steps ?? []) as Record<string, unknown>[]).map((p0) => {
       const p = { ...p0 } as AutomacaoConvertida["steps"][number];
+      const alvo = p.target as { type?: string; relation?: string } | undefined;
+      if (alvo?.type && alvo.type !== "self") p.target = { ...alvo, relation: refRelativa(alvo.relation, boardId) };
       if (p.type === "move_card") p.phase = faseDe(p.phase);
       if (p.type === "set_field") p.field = slugDe(p.field);
       if (p.type === "create_related_card") {

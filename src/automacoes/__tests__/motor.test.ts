@@ -431,3 +431,57 @@ describe("execução", () => {
     expect((await runsDe(id))[0]).toMatchObject({ status: "skipped", error: "card excluído" });
   });
 });
+
+describe("alvo do passo: pai e filhos via relação", () => {
+  it("parcela paga move o contrato (pai) e comenta nele; contrato vigente preenche as parcelas (filhos)", async () => {
+    const m = await montar();
+    const noPai = await automacao(m, {
+      board: m.p.id,
+      trigger: { type: "card_entered_phase", phase: m.p.fases.Paga },
+      steps: [
+        { type: "move_card", phase: m.c.fases.Vigente, target: { type: "parent", relation: m.f.parcelas } },
+        { type: "add_comment", body: "Parcela {{ card.descricao }} paga", target: { type: "parent", relation: m.f.parcelas } },
+      ],
+    });
+    const nosFilhos = await automacao(m, {
+      trigger: { type: "card_entered_phase", phase: m.c.fases.Vigente },
+      steps: [{ type: "set_field", field: m.f.pvalor, expr: "card.valor", target: { type: "children", relation: m.f.parcelas } }],
+    });
+    const c = await novoContrato(m, { valor: 900 });
+    const p1 = await createCard({ boardId: m.p.id, props: { descricao: "1/2" }, actor: m.actor });
+    const p2 = await createCard({ boardId: m.p.id, props: { descricao: "2/2" }, actor: m.actor });
+    for (const p of [p1, p2]) await linkCards({ fieldId: "parcelas", fromCardId: c.id, toCardId: p.id, actor: m.actor });
+
+    await moveCard({ cardId: p1.id, toPhaseId: m.p.fases.Paga, actor: m.actor });
+    await processar();
+    const [r] = await runsDe(noPai);
+    expect(r).toMatchObject({ status: "success", cardId: p1.id });
+    expect(r.log).toMatchObject([{ detalhe: { alvo: "pai", cards: [c.id] } }, { detalhe: { alvo: "pai", cards: [c.id] } }]);
+    expect((await card(c.id)).phaseId).toBe(m.c.fases.Vigente);
+    const [com] = await db.select().from(cardComments).where(eq(cardComments.cardId, c.id));
+    expect(com.body).toBe("Parcela 1/2 paga"); // modelo avaliado no card do gatilho
+
+    // Cascata: o contrato entrou em Vigente → preenche o valor nas duas parcelas (filhos)
+    const [r2] = await runsDe(nosFilhos);
+    expect(r2).toMatchObject({ status: "success", cardId: c.id });
+    for (const p of [p1, p2]) expect((await card(p.id)).props[m.f.pvalor]).toBe(900);
+  });
+
+  it("sem card ligado no papel pedido: o passo registra que não havia alvo e a execução segue", async () => {
+    const m = await montar();
+    const id = await automacao(m, {
+      board: m.p.id,
+      trigger: { type: "card_created" },
+      steps: [
+        { type: "move_card", phase: m.c.fases.Vigente, target: { type: "parent", relation: m.f.parcelas } },
+        { type: "set_field", field: m.f.pdesc, value: "sem contrato" },
+      ],
+    });
+    const p = await createCard({ boardId: m.p.id, props: { descricao: "solta" }, actor: m.actor });
+    await processar();
+    const [r] = await runsDe(id);
+    expect(r.status).toBe("success");
+    expect(r.log).toMatchObject([{ status: "info", mensagem: "nenhum card pai ligado: nada a fazer" }, { status: "ok" }]);
+    expect((await card(p.id)).props[m.f.pdesc]).toBe("sem contrato");
+  });
+});

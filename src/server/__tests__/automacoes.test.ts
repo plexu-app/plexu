@@ -55,6 +55,16 @@ describe("salvarAutomacao", () => {
     expect(await erro(salvarAutomacao(alvo(), null, { ...base, trigger: { type: "scheduled", date_field: B.f.obs } }))).toMatch(/data/);
   });
 
+  it("alvo pai/filhos: fase e campo são do board do outro lado da relação", async () => {
+    const rel = await criarCampo(B.outro, { slug: "pedidos", type: "relation", config: { relation: { target_board: B.id, cardinality: "many" } } });
+    const base = { nome: "alvo", env: "draft" as const, trigger: { type: "card_created" } };
+    const pai = { type: "parent", relation: rel };
+    expect(await erro(salvarAutomacao(alvo(), null, { ...base, steps: [{ type: "move_card", phase: B.fases.Aprovado, target: pai }] }))).toMatch(/fase não encontrada no board do card alvo/);
+    expect(await erro(salvarAutomacao(alvo(), null, { ...base, steps: [{ type: "move_card", phase: B.outraFase, target: { type: "parent", relation: B.f.obs } }] }))).toMatch(/relação do alvo/);
+    expect(await erro(salvarAutomacao(alvo(), null, { ...base, steps: [{ type: "move_card", phase: B.outraFase, target: { type: "parent" } }] }))).toMatch(/relação do alvo/);
+    expect(await salvarAutomacao(alvo(), null, { ...base, steps: [{ type: "move_card", phase: B.outraFase, target: pai }] })).toBeTruthy();
+  });
+
   it("cria, lista com última execução e testa com card sem gravar nada", async () => {
     const id = await salvarAutomacao(alvo(), null, {
       nome: "Aprovar grande",

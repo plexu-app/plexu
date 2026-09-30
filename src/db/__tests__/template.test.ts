@@ -45,6 +45,7 @@ const TEMPLATE: Template = {
           steps: [
             { type: "set_field", field: "motivo", value: "urgente aprovado" },
             { type: "create_related_card", board: "itens", relation: "itens", phase: null, fields: { descricao: "\"Frete\"", valor: "50" } },
+            { type: "set_field", field: "valor", value: "0", target: { type: "children", relation: "itens" } },
           ],
         },
       ],
@@ -171,6 +172,8 @@ describe("automações convertidas", () => {
     expect(a.steps).toEqual([
       { type: "set_field", field: id(pedidos, "motivo"), value: "urgente aprovado" },
       { type: "create_related_card", board: itens, relation: id(pedidos, "itens"), phase: null, fields: { [id(itens, "descricao")]: '"Frete"', [id(itens, "valor")]: "50" } },
+      // alvo filhos: o campo é do board dos itens
+      { type: "set_field", field: id(itens, "valor"), value: "0", target: { type: "children", relation: id(pedidos, "itens") } },
     ]);
 
     const ruim: Template = JSON.parse(JSON.stringify(TEMPLATE));

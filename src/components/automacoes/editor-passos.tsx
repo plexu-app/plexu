@@ -3,7 +3,7 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, NativeSelect, Textarea } from "@/components/ui/input";
-import { METODOS_HTTP, TIPOS_PASSO, type TipoPasso } from "@/lib/automacoes";
+import { METODOS_HTTP, ROTULO_ALVO, TIPOS_PASSO, type TipoPasso } from "@/lib/automacoes";
 import { editavel, type ContextoAutomacoes } from "./contexto";
 
 export type PassoUI = Record<string, unknown> & { type: TipoPasso };
@@ -90,32 +90,77 @@ function Linha({ rotulo, children, largura = "" }: { rotulo: string; children: R
   );
 }
 
+/** Seletor "em qual card": este, pai(s) ou filhos pela relação. Trocar o alvo limpa fase/campo. */
+function SeletorAlvo({ ctx, p, rot, set }: { ctx: ContextoAutomacoes; p: PassoUI; rot: (x: string) => string; set: (p: PassoUI) => void }) {
+  const t = p.target as { type?: string; relation?: string } | undefined;
+  const valor = t?.type && t.type !== "self" ? `${t.type}:${t.relation}` : "self";
+  return (
+    <Linha rotulo="Em qual card">
+      <NativeSelect
+        aria-label={rot("Card alvo")}
+        value={valor}
+        onChange={(e) => {
+          const [type, relation] = e.target.value.split(":");
+          const resto: PassoUI = { ...p };
+          delete resto.target;
+          set({ ...resto, ...(type === "self" ? {} : { target: { type, relation } }), ...(p.type === "move_card" ? { phase: "" } : p.type === "set_field" ? { field: "" } : {}) } as PassoUI);
+        }}
+      >
+        <option value="self">{ROTULO_ALVO.self}</option>
+        {ctx.relacoes.map((r) => (
+          <option key={`p${r.id}`} value={`parent:${r.id}`}>
+            {ROTULO_ALVO.parent} via {r.rotulo}
+          </option>
+        ))}
+        {ctx.relacoes.map((r) => (
+          <option key={`c${r.id}`} value={`children:${r.id}`}>
+            {ROTULO_ALVO.children} via {r.rotulo}
+          </option>
+        ))}
+      </NativeSelect>
+    </Linha>
+  );
+}
+
+/** Fases e campos do board do card alvo (este board, ou o do outro lado da relação). */
+function doAlvo(ctx: ContextoAutomacoes, p: PassoUI) {
+  const t = p.target as { type?: string; relation?: string } | undefined;
+  if (!t?.type || t.type === "self") return { fases: ctx.fases, campos: ctx.campos };
+  const outro = ctx.boards.find((b) => b.id === ctx.relacoes.find((r) => r.id === t.relation)?.outro);
+  return { fases: outro?.fases ?? [], campos: outro?.campos ?? [] };
+}
+
 function CamposPasso({ ctx, p, n, set }: { ctx: ContextoAutomacoes; p: PassoUI; n: number; set: (p: PassoUI) => void }) {
   const upd = (k: string, v: unknown) => set({ ...p, [k]: v });
   const rot = (x: string) => `${x} (passo ${n})`;
+  const alvo = doAlvo(ctx, p);
   switch (p.type) {
     case "move_card":
       return (
-        <Linha rotulo="Para a fase">
-          <NativeSelect aria-label={rot("Fase de destino")} value={s(p.phase)} onChange={(e) => upd("phase", e.target.value)}>
-            <option value="">—</option>
-            {ctx.fases.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </NativeSelect>
-        </Linha>
+        <div className="grid grid-cols-2 gap-2">
+          <SeletorAlvo ctx={ctx} p={p} rot={rot} set={set} />
+          <Linha rotulo="Para a fase">
+            <NativeSelect aria-label={rot("Fase de destino")} value={s(p.phase)} onChange={(e) => upd("phase", e.target.value)}>
+              <option value="">—</option>
+              {alvo.fases.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </NativeSelect>
+          </Linha>
+        </div>
       );
     case "set_field": {
       const modo = p.expr !== undefined ? "expr" : p.value === null ? "limpar" : "valor";
-      const campo = ctx.campos.find((c) => c.id === p.field);
+      const campo = alvo.campos.find((c) => c.id === p.field);
       return (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-4 gap-2">
+          <SeletorAlvo ctx={ctx} p={p} rot={rot} set={set} />
           <Linha rotulo="Campo">
             <NativeSelect aria-label={rot("Campo")} value={s(p.field)} onChange={(e) => upd("field", e.target.value)}>
               <option value="">—</option>
-              {ctx.campos.filter(editavel).map((c) => (
+              {alvo.campos.filter(editavel).map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
@@ -127,7 +172,7 @@ function CamposPasso({ ctx, p, n, set }: { ctx: ContextoAutomacoes; p: PassoUI; 
               aria-label={rot("Como preencher")}
               value={modo}
               onChange={(e) => {
-                const base: PassoUI = { type: "set_field", field: p.field };
+                const base: PassoUI = { type: "set_field", field: p.field, ...(p.target ? { target: p.target } : {}) };
                 set({ ...base, ...(e.target.value === "expr" ? { expr: "" } : e.target.value === "limpar" ? { value: null } : { value: "" }) });
               }}
             >
@@ -276,9 +321,12 @@ function CamposPasso({ ctx, p, n, set }: { ctx: ContextoAutomacoes; p: PassoUI; 
     }
     case "add_comment":
       return (
-        <Linha rotulo="Comentário">
-          <Textarea aria-label={rot("Comentário")} rows={2} value={s(p.body)} onChange={(e) => upd("body", e.target.value)} placeholder="Card movido para {{ card.fase }}" />
-        </Linha>
+        <div className="grid grid-cols-[14rem_1fr] gap-2">
+          <SeletorAlvo ctx={ctx} p={p} rot={rot} set={set} />
+          <Linha rotulo="Comentário">
+            <Textarea aria-label={rot("Comentário")} rows={2} value={s(p.body)} onChange={(e) => upd("body", e.target.value)} placeholder="Card movido para {{ card.fase }}" />
+          </Linha>
+        </div>
       );
   }
 }
