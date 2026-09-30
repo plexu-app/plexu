@@ -94,5 +94,7 @@ export interface PfExport {
   tipo: "pipe" | "table";
   repo: PfRepo;
   automacoes: PfAutomacao[];
+  /** Database exportado com --registros: só id e título (bases de apoio referenciadas por condições). */
+  registros?: { id: string; title: string }[];
   nao_exportavel?: string[];
 }
