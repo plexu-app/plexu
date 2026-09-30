@@ -15,7 +15,8 @@ A implementação usa a biblioteca [`@marcbachmann/cel-js`](https://www.npmjs.co
 | `cartoes(<board>)` | lista | Cards de um board do workspace (board inteiro em memória; ver limitação abaixo). |
 | `existe(<board>, x, cond)` | bool | Algum card do board satisfaz `cond`. Forma curta: `existe(<board>, cond)` usando `item`. |
 | `fase`, `fase_origem`, `fase_destino` | string ou null | Fase atual e, em transições, origem e destino. |
-| `usuario` | registro | Quem dispara a ação (`usuario.id`, `usuario.email`, ...). |
+| `usuario` | registro | Quem dispara a ação (`usuario.id`, `usuario.email`, ...). Em automação: `{id, tipo: "automation"}`. |
+| `form.<chave>` | valor | Valores do mini-form de uma ação (null fora de ações). |
 | `hoje()` | string | Data em `AAAA-MM-DD` no fuso do workspace (`settings.timezone`) quando avaliada pelo core; comparável com campos de data. |
 
 Resolução de `filhos`/`pais`/`pai` a partir das ligações (`card_links`, campo de relação no board de origem):
@@ -106,7 +107,7 @@ lint(fonte): Aviso[]
 evaluate(fonte, ctx) / evaluateBool(fonte, ctx)   // atalhos
 ```
 
-Contexto (`ExprContext`): `card`, `pai?`, `fase?`, `fase_origem?`, `fase_destino?`, `usuario?`, `hoje?` (string ou `Date`, para testes/determinismo) e `resolver?` com `filhos(rel)`, `pais(rel)`, `cartoes(board)`. O motor **não acessa banco**: o chamador carrega os dados e injeta o resolver. `referencias` diz o que carregar antes de avaliar.
+Contexto (`ExprContext`): `card`, `pai?`, `fase?`, `fase_origem?`, `fase_destino?`, `usuario?`, `form?`, `hoje?` (string ou `Date`, para testes/determinismo) e `resolver?` com `filhos(rel)`, `pais(rel)`, `cartoes(board)`. O motor **não acessa banco**: o chamador carrega os dados e injeta o resolver. `referencias` diz o que carregar antes de avaliar.
 
 ## Lint
 

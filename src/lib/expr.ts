@@ -53,6 +53,8 @@ export interface ExprContext {
   fase_origem?: string | null;
   fase_destino?: string | null;
   usuario?: Registro | null;
+  /** Valores do mini-form de uma ação (form.<chave>); ausente fora de ações. */
+  form?: Registro | null;
   /** Data de referência de hoje(). Padrão: data local do servidor no momento da avaliação. */
   hoje?: string | Date;
   resolver?: Partial<ExprResolver>;
@@ -352,6 +354,7 @@ function criarAmbiente(): Environment {
     .registerVariable("fase_origem", "dyn")
     .registerVariable("fase_destino", "dyn")
     .registerVariable("usuario", "dyn")
+    .registerVariable("form", "dyn")
     .registerFunction("hoje(): string", () => estadoAtual().hoje)
     .registerFunction("filhos(string): list<dyn>", (rel: string) => resolverLista("filhos", rel))
     .registerFunction("pais(string): list<dyn>", (rel: string) => resolverLista("pais", rel))
@@ -436,7 +439,7 @@ function literalString(no: ASTNode | undefined): string | null {
   return no && no.op === "value" && typeof no.args === "string" ? no.args : null;
 }
 
-const GLOBAIS = new Set(["fase", "fase_origem", "fase_destino", "usuario"]);
+const GLOBAIS = new Set(["fase", "fase_origem", "fase_destino", "usuario", "form"]);
 
 function coletarReferencias(raiz: ASTNode, avisos: Aviso[]): Referencias {
   const sets = {
@@ -691,6 +694,7 @@ export function compile(fonte: string): ExprCompilada {
         fase_origem: ctx.fase_origem ?? null,
         fase_destino: ctx.fase_destino ?? null,
         usuario: ctx.usuario ? paraRegistro(ctx.usuario) : null,
+        form: ctx.form ? paraRegistro(ctx.form) : null,
       });
       if (resultado instanceof Promise) throw new ExprError("expressão assíncrona não suportada", "avaliacao");
       return normalizarSaida(resultado);
