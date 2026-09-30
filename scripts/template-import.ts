@@ -25,7 +25,7 @@ async function main() {
   console.log(`workspace ${r.workspace.slug} (${r.workspace.criado ? "criado" : "existente"})`);
   for (const b of resumoTemplate(t)) {
     const slug = r.boards.find((x) => x.key === b.board)?.slug;
-    console.log(`  ${slug}: ${b.fases} fases, ${b.campos} campos, ${b.regras} regras, ${b.automacoesPendentes} automações pendentes (não importadas)`);
+    console.log(`  ${slug}: ${b.fases} fases, ${b.campos} campos, ${b.regras} regras, ${b.automacoes} automações, ${b.automacoesPendentes} automações pendentes (não importadas)`);
   }
   console.log(`abrir: /w/${r.workspace.slug}`);
 }

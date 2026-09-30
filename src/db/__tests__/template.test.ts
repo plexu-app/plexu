@@ -33,7 +33,21 @@ const TEMPLATE: Template = {
         { key: "resumo", name: "Resumo", type: "dynamic_text", dynamic_text: { template: "{numero}: {objeto}" } },
       ],
       rules: [{ kind: "can_leave", phase: "abertura", expr: 'filhos("itens").contar() > 0', message: "Inclua ao menos um item." }],
-      automations: [{ key: "a1", name: "Avisar comprador", trigger: { event: "card_created" }, actions: [{ type: "send_email_template" }], status: "pendente" }],
+      automations: [
+        { key: "p1", name: "Avisar comprador", trigger: { event: "card_created" }, actions: [{ type: "send_email_template" }], status: "pendente" },
+        {
+          key: "a1",
+          name: "Frete para urgentes",
+          status: "convertida",
+          env: "published",
+          trigger: { type: "card_entered_phase", phase: "aprovacao" },
+          condition: "card.urgente == true",
+          steps: [
+            { type: "set_field", field: "motivo", value: "urgente aprovado" },
+            { type: "create_related_card", board: "itens", relation: "itens", phase: null, fields: { descricao: "\"Frete\"", valor: "50" } },
+          ],
+        },
+      ],
     },
     {
       key: "itens",
@@ -62,6 +76,7 @@ describe("importarTemplate", () => {
     const r = await importarTemplate(TEMPLATE, { workspace: nome, membro: email });
     expect(r.workspace.criado).toBe(true);
     expect(r.automacoesPendentes).toBe(1);
+    expect(r.automacoes).toBe(1);
     const [u] = await db.select().from(users).where(eq(users.email, email));
     expect((await db.select().from(workspaceMembers).where(eq(workspaceMembers.workspaceId, r.workspace.id)))[0]).toMatchObject({ userId: u.id, orgRole: "owner" });
 
@@ -107,15 +122,18 @@ describe("importarTemplate", () => {
     const r = await importarTemplate(TEMPLATE, { workspace: `Tpl ${randomUUID().slice(0, 6)}` });
     const ex = await exportarTemplate(r.workspace.slug, ["pedidos", "itens"], TEMPLATE.name);
     expect(validarTemplate(ex)).toEqual([]);
-    const semAutomacoes = {
+    // Pendentes não existem no banco; as convertidas voltam iguais.
+    const semPendentes = {
       ...TEMPLATE,
       boards: TEMPLATE.boards.map((b) => {
         const c = { ...b };
-        delete c.automations;
+        const convertidas = (b.automations ?? []).filter((a) => a.status === "convertida");
+        if (convertidas.length) c.automations = convertidas;
+        else delete c.automations;
         return c;
       }),
     };
-    expect(ex).toEqual(semAutomacoes);
+    expect(ex).toEqual(semPendentes);
   });
 
   it("recusa template inválido sem gravar nada", async () => {
@@ -138,3 +156,25 @@ async function exportarFases(wsSlug: string) {
   const t = await exportarTemplate(wsSlug, ["pedidos", "itens"]);
   return new Map(t.boards[0].phases.map((p) => [p.key, fs.find((f) => f.name === p.name)!.id]));
 }
+
+describe("automações convertidas", () => {
+  it("importa com ids resolvidos e o motor as reconhece; referência inexistente é recusada", async () => {
+    const r = await importarTemplate(TEMPLATE, { workspace: `Tpl ${randomUUID().slice(0, 6)}` });
+    const { automations, phases, fields } = await import("../schema");
+    const [a] = await db.select().from(automations).where(eq(automations.workspaceId, r.workspace.id));
+    const pedidos = r.boards.find((b) => b.key === "pedidos")!.id;
+    const itens = r.boards.find((b) => b.key === "itens")!.id;
+    const fs = await db.select().from(fields);
+    const id = (boardId: string, slug: string) => fs.find((f) => f.boardId === boardId && f.slug === slug)!.id;
+    const [aprovacao] = (await db.select().from(phases).where(eq(phases.boardId, pedidos))).filter((f) => f.name === "Aprovação");
+    expect(a).toMatchObject({ boardId: pedidos, env: "published", conditionExpr: "card.urgente == true", trigger: { type: "card_entered_phase", phase: aprovacao.id } });
+    expect(a.steps).toEqual([
+      { type: "set_field", field: id(pedidos, "motivo"), value: "urgente aprovado" },
+      { type: "create_related_card", board: itens, relation: id(pedidos, "itens"), phase: null, fields: { [id(itens, "descricao")]: '"Frete"', [id(itens, "valor")]: "50" } },
+    ]);
+
+    const ruim: Template = JSON.parse(JSON.stringify(TEMPLATE));
+    (ruim.boards[0].automations![1] as { steps: unknown[] }).steps = [{ type: "move_card", phase: "nao_existe" }];
+    expect(validarTemplate(ruim)).toEqual([{ onde: "board pedidos › automação a1", mensagem: "fase nao_existe não existe em pedidos" }]);
+  });
+});

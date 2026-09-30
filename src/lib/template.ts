@@ -4,6 +4,7 @@
 // Puro: tipos, normalização e validação. A escrita no banco fica em src/db/template.ts.
 import { parse } from "./expr";
 import { TIPOS_VALIDOS } from "./config-campos";
+import { normalizarGatilho, normalizarPassos } from "./automacoes";
 
 export const VERSAO_TEMPLATE = 1;
 
@@ -74,15 +75,96 @@ export interface RegraTemplate {
 }
 
 /** Espaço reservado: o Plexu ainda não executa automações; ficam registradas para revisão. */
-export interface AutomacaoTemplate {
+/** Automação sem equivalente no Plexu (ainda): o importador não cria nada, só conta. */
+export interface AutomacaoPendente {
   key: string;
   name: string;
   trigger: { event: string; phase?: string | null; fields?: string[] };
   condition?: string | null;
   actions: { type: string; params?: Record<string, unknown> }[];
-  /** "pendente": sem equivalente ainda; o importador não cria nada, só conta. */
   status: "pendente";
   note?: string;
+}
+
+/**
+ * Automação do motor v1 (src/lib/automacoes.ts) com keys no lugar de ids: fases e campos por key do
+ * board; relações como em rollup.via ("campo" deste board ou "board.campo"); em all_children_in_phase,
+ * a fase é do board dos filhos; em create_related_card, board/fase/campos são do board do novo card.
+ */
+export interface AutomacaoConvertida {
+  key: string;
+  name: string;
+  status: "convertida";
+  /** Padrão: draft (não dispara até alguém publicar). */
+  env?: "draft" | "test" | "published";
+  trigger: Record<string, unknown> & { type: string };
+  condition?: string | null;
+  steps: (Record<string, unknown> & { type: string })[];
+  suppress_triggers?: boolean;
+  note?: string;
+}
+
+export type AutomacaoTemplate = AutomacaoPendente | AutomacaoConvertida;
+
+/** Resolve keys do template (fase, campo, board) para a referência final (id no importador). */
+export interface ResolvedorRefs {
+  fase(boardKey: string, faseKey: string): string | null;
+  campo(boardKey: string, campoKey: string): string | null;
+  board(boardKey: string): string | null;
+}
+
+/**
+ * Troca as keys de uma automação convertida pelas referências do resolvedor (ids ao importar). Devolve
+ * erros legíveis em vez de lançar, para a validação listar tudo de uma vez.
+ */
+export function referenciasAutomacao(a: AutomacaoConvertida, b: BoardTemplate, t: Template, r: ResolvedorRefs) {
+  const erros: string[] = [];
+  const boards = new Map(t.boards.map((x) => [x.key, x]));
+  const exigir = <T>(v: T | null, msg: string): T | string => (v === null || v === undefined ? (erros.push(msg), "") : v);
+  const fase = (bk: string, k: unknown) => exigir(r.fase(bk, String(k ?? "")), `fase ${String(k)} não existe em ${bk}`);
+  const campo = (bk: string, k: unknown) => exigir(r.campo(bk, String(k ?? "")), `campo ${String(k)} não existe em ${bk}`);
+  /** Relação "campo" ou "board.campo" que liga b a outro board; devolve id e o board do outro lado. */
+  const relacao = (via: unknown): { id: string; outro: string } => {
+    const v = String(via ?? "");
+    const [bk, ck] = v.includes(".") ? v.split(".") : [b.key, v];
+    const rel = boards.get(bk)?.fields.find((x) => x.key === ck && x.type === "relation");
+    const outro = rel ? (bk === b.key ? rel.relation?.board ?? "" : bk) : "";
+    if (!rel || (bk !== b.key && rel.relation?.board !== b.key)) {
+      erros.push(`relação ${v} não liga este board a outro`);
+      return { id: "", outro: "" };
+    }
+    return { id: String(campo(bk, ck)), outro };
+  };
+  const g = { ...a.trigger };
+  if (g.type === "card_entered_phase" || g.type === "card_left_phase") g.phase = fase(b.key, g.phase);
+  if (g.type === "field_updated") g.fields = ((g.fields as unknown[]) ?? []).map((f) => campo(b.key, f));
+  if (g.type === "scheduled" && g.date_field !== undefined) g.date_field = campo(b.key, g.date_field);
+  if (g.type === "all_children_in_phase") {
+    const rel = relacao(g.relation);
+    g.relation = rel.id;
+    if (rel.outro) g.phase = fase(rel.outro, g.phase);
+  }
+  const steps = (a.steps ?? []).map((p0) => {
+    const p: Record<string, unknown> = { ...p0 };
+    if (p.type === "move_card") p.phase = fase(b.key, p.phase);
+    if (p.type === "set_field") p.field = campo(b.key, p.field);
+    if (p.type === "create_related_card") {
+      const alvo = String(p.board ?? "");
+      if (!boards.has(alvo)) erros.push(`board ${alvo} não existe no template`);
+      else {
+        if (p.relation) {
+          const rel = relacao(p.relation);
+          if (rel.outro && rel.outro !== alvo) erros.push(`relação ${String(p.relation)} não liga ao board ${alvo}`);
+          p.relation = rel.id;
+        }
+        if (p.phase) p.phase = fase(alvo, p.phase);
+        p.fields = Object.fromEntries(Object.entries((p.fields ?? {}) as Record<string, string>).map(([k, v]) => [campo(alvo, k), v]));
+      }
+      p.board = exigir(r.board(alvo), `board ${alvo} não existe`);
+    }
+    return p;
+  });
+  return { trigger: g, steps, erros };
 }
 
 export interface BoardTemplate {
@@ -204,6 +286,30 @@ export function validarTemplate(t: Template, externos: Iterable<string> = []): E
       if (!r.expr?.trim()) err(or, "expr obrigatória");
       else expr(or, r.expr);
     }
+    for (const a of b.automations ?? []) {
+      const oa = `${ob} › automação ${a.key}`;
+      if (a.status === "pendente") continue;
+      if (a.status !== "convertida") {
+        err(oa, "status deve ser pendente ou convertida");
+        continue;
+      }
+      if (!a.name?.trim()) err(oa, "nome obrigatório");
+      if (a.env && !["draft", "test", "published"].includes(a.env)) err(oa, `env inválido: ${a.env}`);
+      const refs = referenciasAutomacao(a, b, t, {
+        fase: (bk, k) => (boards.get(bk)?.phases.some((f) => f.key === k) ? k : null),
+        campo: (bk, k) => (boards.get(bk)?.fields.some((c) => c.key === k) ? k : null),
+        board: (bk) => (boards.has(bk) ? bk : null),
+      });
+      for (const m of refs.erros) err(oa, m);
+      if (!refs.erros.length)
+        try {
+          normalizarGatilho(refs.trigger);
+          if (!normalizarPassos(refs.steps).length) err(oa, "sem passos");
+        } catch (e) {
+          err(oa, (e as Error).message);
+        }
+      expr(`${oa} › condição`, a.condition);
+    }
   }
   return erros;
 }
@@ -215,6 +321,7 @@ export function resumoTemplate(t: Template) {
     fases: b.phases.length,
     campos: b.fields.length,
     regras: b.rules?.length ?? 0,
-    automacoesPendentes: b.automations?.length ?? 0,
+    automacoesPendentes: (b.automations ?? []).filter((a) => a.status === "pendente").length,
+    automacoes: (b.automations ?? []).filter((a) => a.status === "convertida").length,
   }));
 }

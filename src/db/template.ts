@@ -7,9 +7,10 @@ import { normalizarConfig, type ContextoConfig } from "../lib/config-campos";
 import { fasesDoCampo } from "../lib/fases-preenchimento";
 import { normalizarValidacao } from "../lib/validacao";
 import { slugify, slugLivre } from "../lib/slug";
-import { validarTemplate, VERSAO_TEMPLATE, type BoardTemplate, type CampoTemplate, type Template } from "../lib/template";
+import { normalizarGatilho, normalizarPassos } from "../lib/automacoes";
+import { referenciasAutomacao, validarTemplate, VERSAO_TEMPLATE, type AutomacaoConvertida, type BoardTemplate, type CampoTemplate, type Template } from "../lib/template";
 import { db } from "./index";
-import { boards, fieldPhaseSettings, fields, phases, rules, users, workspaceMembers, workspaces } from "./schema";
+import { automations, boards, fieldPhaseSettings, fields, phases, rules, users, workspaceMembers, workspaces } from "./schema";
 
 export class ErroImportacao extends Error {
   constructor(public erros: { onde: string; mensagem: string }[]) {
@@ -28,6 +29,8 @@ export interface ResultadoImportacao {
   workspace: { id: string; slug: string; criado: boolean };
   boards: { key: string; slug: string; id: string }[];
   automacoesPendentes: number;
+  /** Automações do motor v1 criadas. */
+  automacoes: number;
 }
 
 type Config = Record<string, unknown>;
@@ -97,7 +100,7 @@ export async function importarTemplate(t: Template, op: OpcoesImportacao): Promi
     const existentes = await tx.select({ id: boards.id, slug: boards.slug, name: boards.name }).from(boards).where(and(eq(boards.workspaceId, ws.id), isNull(boards.archivedAt)));
     const erros = validarTemplate(t, existentes.map((b) => b.slug));
     if (erros.length) throw new ErroImportacao(erros);
-    const evento = (boardId: string | null, entidade: "workspace" | "board" | "phase" | "field" | "rule", id: string, dados?: Record<string, unknown>) =>
+    const evento = (boardId: string | null, entidade: "workspace" | "board" | "phase" | "field" | "rule" | "automation", id: string, dados?: Record<string, unknown>) =>
       emitirEventoConfig(tx, { workspaceId: ws.id, boardId, actor }, { entidade, acao: "created", id, dados: { ...dados, template: t.name } });
     if (criado) await evento(null, "workspace", ws.id, { slug: slugWs });
 
@@ -199,11 +202,45 @@ export async function importarTemplate(t: Template, op: OpcoesImportacao): Promi
           .returning();
         await evento(boardId, "rule", nr.id, { kind: r.kind });
       }
+      // Automações do motor v1 (as pendentes só são contadas).
+      for (const a of b.automations ?? []) {
+        if (a.status !== "convertida") continue;
+        const refs = referenciasAutomacao(a, b, t, {
+          fase: (bk, k) => ids.fases.get(`${bk}.${k}`) ?? null,
+          campo: (bk, k) => ids.campos.get(`${bk}.${k}`) ?? null,
+          board: (bk) => ids.boards.get(bk) ?? null,
+        });
+        const onde = `board ${b.key} › automação ${a.key}`;
+        if (refs.erros.length) throw new ErroImportacao(refs.erros.map((mensagem) => ({ onde, mensagem })));
+        let trigger, steps;
+        try {
+          trigger = normalizarGatilho(refs.trigger);
+          steps = normalizarPassos(refs.steps);
+        } catch (e) {
+          throw new ErroImportacao([{ onde, mensagem: (e as Error).message }]);
+        }
+        const [na] = await tx
+          .insert(automations)
+          .values({
+            workspaceId: ws.id,
+            boardId,
+            name: a.name,
+            trigger,
+            conditionExpr: a.condition ?? null,
+            steps,
+            env: a.env ?? "draft",
+            publishedVersion: a.env === "published" ? 1 : 0,
+            suppressTriggers: a.suppress_triggers === true,
+          })
+          .returning();
+        await evento(boardId, "automation", na.id, { name: a.name, env: na.env });
+      }
     }
     return {
       workspace: { id: ws.id, slug: slugWs, criado },
       boards: saida,
-      automacoesPendentes: t.boards.reduce((n, b) => n + (b.automations?.length ?? 0), 0),
+      automacoesPendentes: t.boards.reduce((n, b) => n + (b.automations ?? []).filter((a) => a.status === "pendente").length, 0),
+      automacoes: t.boards.reduce((n, b) => n + (b.automations ?? []).filter((a) => a.status === "convertida").length, 0),
     };
   });
 }
@@ -219,14 +256,22 @@ export async function exportarTemplate(wsSlug: string, boardSlugs: string[], nom
   const faltando = boardSlugs.filter((s) => !bs.some((b) => b.slug === s));
   if (faltando.length) throw new Error(`boards não encontrados em ${wsSlug}: ${faltando.join(", ")}`);
   const ids = bs.map((b) => b.id);
-  const [fs, ps, rs] = await Promise.all([
+  const [fs, ps, rs, as] = await Promise.all([
     db.select().from(fields).where(and(inArray(fields.boardId, ids), isNull(fields.archivedAt))).orderBy(asc(fields.position), asc(fields.name)),
     db.select().from(phases).where(and(inArray(phases.boardId, ids), isNull(phases.archivedAt))).orderBy(asc(phases.position)),
     db.select().from(rules).where(inArray(rules.boardId, ids)).orderBy(asc(rules.position)),
+    db.select().from(automations).where(and(inArray(automations.boardId, ids), isNull(automations.archivedAt), eq(automations.mode, "simple"))).orderBy(asc(automations.createdAt)),
   ]);
   const aps = fs.length ? await db.select().from(fieldPhaseSettings).where(inArray(fieldPhaseSettings.fieldId, fs.map((f) => f.id))) : [];
   // Alvos de relação fora da lista: slug do board no workspace.
-  const alvos = [...new Set(fs.map((f) => ((f.config as Config).relation as { target_board?: string } | undefined)?.target_board).filter((x): x is string => !!x))];
+  const alvos = [
+    ...new Set(
+      [
+        ...fs.map((f) => ((f.config as Config).relation as { target_board?: string } | undefined)?.target_board),
+        ...as.flatMap((a) => ((a.steps ?? []) as { type?: string; board?: string }[]).filter((p) => p.type === "create_related_card").map((p) => p.board)),
+      ].filter((x): x is string => !!x),
+    ),
+  ];
   const todosAlvos = alvos.length ? await db.select({ id: boards.id, slug: boards.slug }).from(boards).where(inArray(boards.id, alvos)) : [];
   const slugBoard = new Map([...todosAlvos, ...bs].map((b) => [b.id, b.slug]));
   const outrosCampos = await db.select({ id: fields.id, slug: fields.slug, boardId: fields.boardId }).from(fields);
@@ -309,6 +354,43 @@ export async function exportarTemplate(wsSlug: string, boardSlugs: string[], nom
     return c;
   };
 
+  /** Campo por referência de template: slug neste board, "board.slug" em outro. */
+  const refRelativa = (id: unknown, boardId: string) => {
+    const f = refCampo.get(String(id));
+    return f ? (f.boardId === boardId ? f.slug : `${slugBoard.get(f.boardId) ?? f.boardId}.${f.slug}`) : String(id);
+  };
+  const slugDe = (id: unknown) => refCampo.get(String(id))?.slug ?? String(id);
+  const faseDe = (id: unknown) => keyFase.get(String(id)) ?? String(id);
+  const automacaoTemplate = (a: typeof as[number], boardId: string, i: number): AutomacaoConvertida => {
+    const g = { ...(a.trigger as Record<string, unknown>) } as AutomacaoConvertida["trigger"];
+    if (g.phase) g.phase = faseDe(g.phase);
+    if (Array.isArray(g.fields)) g.fields = g.fields.map(slugDe);
+    if (g.date_field) g.date_field = slugDe(g.date_field);
+    if (g.relation) g.relation = refRelativa(g.relation, boardId);
+    const steps = ((a.steps ?? []) as Record<string, unknown>[]).map((p0) => {
+      const p = { ...p0 } as AutomacaoConvertida["steps"][number];
+      if (p.type === "move_card") p.phase = faseDe(p.phase);
+      if (p.type === "set_field") p.field = slugDe(p.field);
+      if (p.type === "create_related_card") {
+        if (p.relation) p.relation = refRelativa(p.relation, boardId);
+        if (p.phase) p.phase = faseDe(p.phase);
+        p.fields = Object.fromEntries(Object.entries((p.fields ?? {}) as Record<string, string>).map(([k, v]) => [slugDe(k), v]));
+        p.board = slugBoard.get(String(p.board)) ?? String(p.board);
+      }
+      return p;
+    });
+    return {
+      key: `a${i + 1}`,
+      name: a.name,
+      status: "convertida",
+      env: a.env,
+      trigger: g,
+      ...(a.conditionExpr ? { condition: a.conditionExpr } : {}),
+      steps,
+      ...(a.suppressTriggers ? { suppress_triggers: true } : {}),
+    };
+  };
+
   return {
     plexu_template: VERSAO_TEMPLATE,
     name: nome ?? `${ws.name}: ${bs.map((b) => b.name).join(", ")}`,
@@ -333,7 +415,8 @@ export async function exportarTemplate(wsSlug: string, boardSlugs: string[], nom
           message: r.message,
           ...(r.enabled ? {} : { enabled: false }),
         }));
-      return regras.length ? { ...board, rules: regras } : board;
+      const autos = as.filter((a) => a.boardId === b.id).map((a, i) => automacaoTemplate(a, b.id, i));
+      return { ...board, ...(regras.length ? { rules: regras } : {}), ...(autos.length ? { automations: autos } : {}) };
     }),
   };
 }
