@@ -204,14 +204,49 @@ export const automations = pgTable("automations", {
 
 export const automationRuns = pgTable("automation_runs", {
   id: id(),
-  automationId: uuid("automation_id").notNull().references(() => automations.id, { onDelete: "cascade" }),
+  /** Execução de automação ou de ação (uma das duas). */
+  automationId: uuid("automation_id").references(() => automations.id, { onDelete: "cascade" }),
+  actionId: uuid("action_id").references(() => actions.id, { onDelete: "cascade" }),
+  workspaceId: uuid("workspace_id").references(() => workspaces.id, { onDelete: "cascade" }),
   cardId: uuid("card_id").references(() => cards.id, { onDelete: "set null" }),
   triggerEventId: uuid("trigger_event_id"),
   status: text("status", { enum: ["queued", "running", "success", "failed", "skipped", "dead"] }).notNull(),
+  env: text("env", { enum: ["test", "published"] }).notNull().default("published"),
   attempt: integer("attempt").notNull().default(1),
+  /** Profundidade da cascata e automações já disparadas neste ciclo (proteção contra loop). */
+  depth: integer("depth").notNull().default(0),
+  chain: uuid("chain").array().notNull().default(sql`{}::uuid[]`),
+  dedupeKey: text("dedupe_key"),
+  context: jsonb("context").notNull().default({}),
   log: jsonb("log").notNull().default([]),
+  error: text("error"),
+  createdAt: ts("created_at").notNull().defaultNow(),
   startedAt: ts("started_at"),
   finishedAt: ts("finished_at"),
+});
+
+/** Eventos já despachados para as automações. */
+export const automationDispatch = pgTable("automation_dispatch", {
+  eventId: uuid("event_id").primaryKey(),
+  dispatchedAt: ts("dispatched_at").notNull().defaultNow(),
+});
+
+export const variables = pgTable("variables", {
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  key: text("key").notNull(),
+  /** Segredo: cifrado (AES-256-GCM, chave derivada do APP_SECRET). */
+  value: text("value").notNull(),
+  isSecret: boolean("is_secret").notNull().default(false),
+}, (t) => [primaryKey({ columns: [t.workspaceId, t.key] })]);
+
+export const connections = pgTable("connections", {
+  id: id(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  type: text("type", { enum: ["smtp"] }).notNull(),
+  /** Chave de uma variável secreta (senha), nunca o segredo. */
+  secretRef: text("secret_ref"),
+  config: jsonb("config").notNull().default({}),
 });
 
 export const events = pgTable("events", {
@@ -226,6 +261,8 @@ export const events = pgTable("events", {
   occurredAt: ts("occurred_at").notNull().defaultNow(),
   /** Marca de auditoria gravada ao excluir o workspace (única mudança permitida em events). */
   workspaceDeletedAt: ts("workspace_deleted_at"),
+  /** Execução de automação/ação que causou o evento (default: setting plexu.run_id da transação). */
+  automationRunId: uuid("automation_run_id").default(sql`nullif(current_setting('plexu.run_id', true), '')::uuid`),
 }, (t) => [index("events_card_idx").on(t.cardId, t.occurredAt)]);
 
 export const views = pgTable("views", {

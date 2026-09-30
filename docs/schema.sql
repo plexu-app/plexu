@@ -328,31 +328,47 @@ create table automations (
   updated_at timestamptz not null default now()
 );
 
-create table automation_runs (
+create table automation_runs (                  -- execuções de automação e de ação (mesmo executor)
   id uuid primary key default gen_random_uuid(),
-  automation_id uuid not null references automations,
+  automation_id uuid references automations,
+  action_id uuid references actions,
+  workspace_id uuid references workspaces,
   card_id uuid references cards,
   trigger_event_id uuid,                          -- FK para events
   status text not null check (status in ('queued','running','success','failed','skipped','dead')),
+  env text not null default 'published' check (env in ('test','published')),   -- test = simulação (nada gravado)
   attempt int not null default 1,
-  log jsonb not null default '[]',
+  depth int not null default 0,                   -- profundidade da cascata (proteção contra loop)
+  chain uuid[] not null default '{}',             -- automações já disparadas neste ciclo
+  dedupe_key text,                                -- um disparo por (automação, chave): agendados, field_updated
+  context jsonb not null default '{}',            -- gatilho, fases, form, quem pediu
+  log jsonb not null default '[]',                -- um item por passo
+  error text,
+  created_at timestamptz not null default now(),
   started_at timestamptz,
-  finished_at timestamptz
+  finished_at timestamptz,
+  check (automation_id is not null or action_id is not null)
 );
 create index on automation_runs (automation_id, started_at desc);
+create unique index on automation_runs (automation_id, dedupe_key) where dedupe_key is not null;
 
-create table connections (                       -- credenciais reutilizáveis (OAuth2, api key, SMTP, IMAP)
+create table automation_dispatch (               -- eventos já despachados para as automações
+  event_id uuid primary key,
+  dispatched_at timestamptz not null default now()
+);
+
+create table connections (                       -- credenciais reutilizáveis (OAuth2, api key, SMTP, IMAP); v1: smtp
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces,
   name text not null,
   type text not null,
-  secret_ref text not null,                       -- referência no cofre, nunca o segredo
+  secret_ref text,                                -- chave de uma variável secreta, nunca o segredo
   config jsonb not null default '{}'
 );
 create table variables (
   workspace_id uuid references workspaces,
   key text not null,
-  value text not null,
+  value text not null,                            -- segredo: cifrado (AES-256-GCM, chave derivada do APP_SECRET)
   is_secret bool not null default false,
   primary key (workspace_id, key)
 );
@@ -377,7 +393,9 @@ create table events (
   actor_id uuid,
   data jsonb not null,                            -- field_updated: {field_id, old, new}; moved: {from_phase, to_phase}
   occurred_at timestamptz not null default now(),
-  workspace_deleted_at timestamptz                -- marcado ao excluir o workspace (auditoria)
+  workspace_deleted_at timestamptz,               -- marcado ao excluir o workspace (auditoria)
+  automation_run_id uuid                          -- execução que causou o evento (default: setting plexu.run_id da transação)
+    default nullif(current_setting('plexu.run_id', true), '')::uuid
 );
 create index on events (card_id, occurred_at);
 create index on events (board_id, occurred_at);

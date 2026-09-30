@@ -11,7 +11,9 @@ import {
   cardComments,
   cardLinks,
   cards,
+  connections,
   events,
+  variables,
   views,
   workspaceMembers,
   workspaces,
@@ -99,6 +101,8 @@ export async function excluirWorkspace(input: ExcluirWorkspaceInput): Promise<Re
     await tx.delete(cardComments).where(inArray(cardComments.cardId, idsCards));
     await tx.delete(cards).where(eq(cards.workspaceId, ws.id));
     await tx.delete(boards).where(eq(boards.workspaceId, ws.id)); // fases, campos, regras, ações, sequências em cascata
+    await tx.delete(connections).where(eq(connections.workspaceId, ws.id));
+    await tx.delete(variables).where(eq(variables.workspaceId, ws.id));
     await tx.delete(workspaceMembers).where(eq(workspaceMembers.workspaceId, ws.id));
 
     // Lápide: libera o slug para reúso e zera configurações; o nome fica para a auditoria.
