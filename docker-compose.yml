@@ -36,6 +36,8 @@ services:
       db: { condition: service_healthy }
     environment:
       DATABASE_URL: postgres://plexu:plexu@db:5432/plexu
+      # decifra variáveis secretas das automações (mesmo valor do app)
+      APP_SECRET: "${APP_SECRET:?defina APP_SECRET no .env - gere com openssl rand -hex 32}"
     command: node scripts/worker.mjs
 
 volumes:

@@ -9,6 +9,7 @@ export { garantirIndiceExclusivo } from "./fields";
 export { estadoDosCampos, movimentosDoCard, type MovimentoPossivel } from "./vistas";
 export type { EstadoCampo } from "./vistas";
 export { CoreError } from "./types";
+export { avaliarNoCard, type AvaliarInput } from "./avaliar";
 export { arquivarWorkspace, excluirWorkspace, restaurarWorkspace } from "./workspaces";
 export type { ExcluirWorkspaceInput, ResultadoExclusao, WorkspaceInput } from "./workspaces";
 export type { Actor, ActorType, CardRow, CodigoCore, OpcoesOp, Tx } from "./types";
