@@ -99,6 +99,7 @@ Três passos, todos só com a API GraphQL (sem navegador) e só estrutura (nunca
 
 ```bash
 pnpm pipefy:export <id> [<id>...]                         # → exports/pipefy/<id>.json (token em PIPEFY_TOKEN)
+pnpm pipefy:export <id-da-base> --registros                # database de apoio: também id e título dos registros
 pnpm pipefy:to-template exports/pipefy/*.json [--anonimizar] [--nome "…"]
                                                           # → exports/pipefy/template.json e relatorio.md
 pnpm template:import exports/pipefy/template.json --workspace "Nome" --membro voce@exemplo
@@ -136,6 +137,7 @@ Fases (ordem, final, destinos permitidos), campos (tipo, obrigatório, editável
 | destinos permitidos restritos | regra `can_enter` com `fase_origem`/`fase_destino` |
 | conexão com "filho obrigatório para finalizar" | regra `can_enter` nas fases finais: `filhos(rel).contar() > 0` |
 | condicional de campo (mostrar/ocultar) | `visible` do campo alvo: mostrar quando = condição; ocultar quando = negação |
+| condição sobre conexão com uma base de apoio ("Categoria = registro X") | com a base exportada com `--registros`: `filhos("conexao").algum(r, r.titulo == "<título do registro>")` (vários registros → `in [...]`; diferente → negação; vazio/preenchido → `size(card.conexao)`); registro não exportado fica em "Não convertida" com o motivo |
 | série de conexões numeradas para o mesmo alvo ("Item 01..12") | **uma** relação 1:N (`many`) |
 | série de campos numerados alinhada a ela ("Aprovar item 01..12") | um campo em cada card filho; se uma automação copiava cada membro para um campo do filho, esse campo é reaproveitado e a cópia deixa de existir |
 | automação `run_a_formula` `SUM(%{item_NN.valor}...)` sobre a série | `rollup` `sum` pela relação (várias automações 1/12…12/12 → 1 rollup) |
