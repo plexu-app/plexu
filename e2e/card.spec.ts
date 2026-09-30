@@ -115,5 +115,8 @@ test("card em 3 colunas: relações no formulário, inversas em Relacionados, fa
   await painel.getByRole("tab", { name: /Relacionados/ }).click();
   const inversa = painel.locator('[data-inversa="Contratos · Fornecedor"]');
   await expect(inversa).toBeVisible();
-  await expect(inversa.getByRole("link", { name: /CT-/ })).toHaveCount(1);
+  // O fornecedor acumula contratos de outras execuções: confere o deste teste, pelo link do card.
+  const idContrato = urlContrato.split("/c/")[1];
+  await expect(inversa.locator(`a[href$="/c/${idContrato}"]`)).toHaveCount(1);
+  await expect(inversa.locator(`a[href$="/c/${idContrato}"]`)).toContainText("CT-");
 });
