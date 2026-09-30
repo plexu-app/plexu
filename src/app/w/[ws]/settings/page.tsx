@@ -1,5 +1,7 @@
+import { ConfigSmtp, Variaveis } from "@/components/workspace/variaveis";
 import { ZonaDePerigo } from "@/components/workspace/zona-de-perigo";
-import { exigirMembro } from "@/server/acesso";
+import { exigirMembro, podeConfigurar } from "@/server/acesso";
+import { smtpDoWorkspaceUI, variaveisDoWorkspace } from "@/server/automacoes";
 
 export default async function ConfiguracoesWorkspace({ params }: { params: Promise<{ ws: string }> }) {
   const { ws } = await params;
@@ -14,6 +16,12 @@ export default async function ConfiguracoesWorkspace({ params }: { params: Promi
         <p role="status" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
           Este workspace está arquivado: não aparece na barra lateral nem nas listas. Os dados estão intactos.
         </p>
+      )}
+      {podeConfigurar(ctx) && !ctx.ws.arquivado && (
+        <>
+          <Variaveis ws={ctx.ws.slug} variaveis={await variaveisDoWorkspace(ctx.ws.id)} />
+          <ConfigSmtp ws={ctx.ws.slug} atual={await smtpDoWorkspaceUI(ctx.ws.id)} />
+        </>
       )}
       {ctx.papel === "owner" ? (
         <ZonaDePerigo ws={ctx.ws.slug} nome={ctx.ws.name} arquivado={ctx.ws.arquivado} />

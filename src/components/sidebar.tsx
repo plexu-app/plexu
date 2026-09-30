@@ -55,7 +55,7 @@ export function Sidebar({
   marca,
   workspaces = [],
   arquivados = 0,
-  ehOwner = false,
+  configuraWorkspace = false,
 }: {
   ws: string;
   wsNome: string;
@@ -67,7 +67,8 @@ export function Sidebar({
   workspaces?: { slug: string; name: string }[];
   /** Quantos arquivados o usuário (owner) pode restaurar. */
   arquivados?: number;
-  ehOwner?: boolean;
+  /** Owner/admin: link para as configurações do workspace. */
+  configuraWorkspace?: boolean;
 }) {
   const atual = usePathname();
   const [recolhida, alternar] = useRecolhida();
@@ -151,7 +152,7 @@ export function Sidebar({
                 </Link>
               </li>
             )}
-            {ehOwner && (
+            {configuraWorkspace && (
               <li>
                 <Link
                   href={`/w/${ws}/settings`}

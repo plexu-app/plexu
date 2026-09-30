@@ -67,7 +67,7 @@ function semUndefined<T extends object>(data: T): T {
 // Configuração (decisão 13: log cobre dados e configuração)
 // ---------------------------------------------------------------------------
 
-export type EntidadeConfig = "workspace" | "board" | "phase" | "field" | "rule" | "field_phase_settings";
+export type EntidadeConfig = "workspace" | "board" | "phase" | "field" | "rule" | "field_phase_settings" | "automation" | "action" | "variable" | "connection";
 
 export interface EventoConfig {
   entidade: EntidadeConfig;

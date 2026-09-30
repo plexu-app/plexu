@@ -3,6 +3,11 @@
 // E2E contra o app real (next dev) e o banco plexu_e2e (E2E_DATABASE_URL sobrescreve), com `pnpm db:migrate` e `pnpm db:seed` aplicados nele.
 // Nunca aponta para o banco do demo (plexu).
 const PORTA = Number(process.env.E2E_PORT ?? 3200);
+const PORTA_WORKER = PORTA + 1;
+const AMBIENTE = {
+  DATABASE_URL: process.env.E2E_DATABASE_URL ?? "postgres://plexu:plexu@localhost:5433/plexu_e2e",
+  APP_SECRET: process.env.APP_SECRET ?? "segredo-e2e-com-mais-de-16-caracteres",
+};
 
 export default defineConfig({
   testDir: "e2e",
@@ -19,14 +24,21 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 900 } } }],
-  webServer: {
-    command: process.env.E2E_CMD ?? `node node_modules/next/dist/bin/next dev -p ${PORTA}`,
-    url: `http://localhost:${PORTA}/api/health`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 240_000,
-    env: {
-      DATABASE_URL: process.env.E2E_DATABASE_URL ?? "postgres://plexu:plexu@localhost:5433/plexu_e2e",
-      APP_SECRET: process.env.APP_SECRET ?? "segredo-e2e-com-mais-de-16-caracteres",
+  webServer: [
+    {
+      command: process.env.E2E_CMD ?? `node node_modules/next/dist/bin/next dev -p ${PORTA}`,
+      url: `http://localhost:${PORTA}/api/health`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 240_000,
+      env: AMBIENTE,
     },
-  },
+    // Worker de automações (despacho de eventos e execuções) no mesmo banco do e2e.
+    {
+      command: "node node_modules/tsx/dist/cli.mjs src/worker/index.ts",
+      url: `http://localhost:${PORTA_WORKER}/health`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+      env: { ...AMBIENTE, WORKER_PORT: String(PORTA_WORKER) },
+    },
+  ],
 });
