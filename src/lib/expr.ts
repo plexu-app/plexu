@@ -371,7 +371,11 @@ function criarAmbiente(): Environment {
     )
     .registerFunction("list.soma(): double", (lista: unknown[]) =>
       lista.reduce<number>((acc, item) => acc + numero(item), 0),
-    );
+    )
+    // Texto: aceitam null (campo vazio) e devolvem null; maiúsculas/minúsculas com acentos (pt-BR).
+    .registerFunction("upper(dyn): dyn", texto("upper", (s) => s.toLocaleUpperCase("pt-BR")))
+    .registerFunction("lower(dyn): dyn", texto("lower", (s) => s.toLocaleLowerCase("pt-BR")))
+    .registerFunction("trim(dyn): dyn", texto("trim", (s) => s.trim()));
 
   // Valores de campos numéricos chegam do JSON como double; literais inteiros são int.
   // CEL puro não mistura os dois em aritmética; aqui promovemos para double.
@@ -387,6 +391,15 @@ function criarAmbiente(): Environment {
     env.registerOperator(`int ${op} double`, (a: bigint, b: number) => fn(Number(a), b));
   }
   return env;
+}
+
+/** Função de texto null-safe: null → null; texto → f(texto); outro tipo → erro claro. */
+function texto(nome: string, f: (s: string) => string) {
+  return (v: unknown) => {
+    if (v === null || v === undefined) return null;
+    if (typeof v !== "string") throw new Error(`${nome}() espera texto`);
+    return f(v);
+  };
 }
 
 function numero(v: unknown): number {
