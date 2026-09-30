@@ -163,9 +163,13 @@ interface BoardConv {
   rel: RelatorioBoard;
 }
 
-const unico = (base: string, usados: Set<string>, sep = "_") => {
-  let k = base;
-  for (let i = 2; usados.has(k); i++) k = `${base}${sep}${i}`;
+/** Key livre: base, base_2, base_3… sem passar de max caracteres (keys de campo: 40). */
+const unico = (base: string, usados: Set<string>, sep = "_", max = 40) => {
+  let k = base.slice(0, max);
+  for (let i = 2; usados.has(k); i++) {
+    const sufixo = `${sep}${i}`;
+    k = `${base.slice(0, max - sufixo.length)}${sufixo}`;
+  }
   usados.add(k);
   return k;
 };
@@ -618,6 +622,10 @@ class Conversor {
                 : x.operation === "present"
                   ? "fase != null"
                   : null;
+      } else if (r.k === "card" && r.tipo === "relation") {
+        const c = this.condicaoConexao(b, r.slug, x.operation, x.value);
+        if ("motivo" in c) return c.motivo;
+        e = c.expr;
       } else if (r.k === "card") {
         e = exprBase(`card.${r.slug}`, r.tipo, x.operation, this.valorDaCondicao(b, x.field_address, x.value));
       } else {
@@ -632,6 +640,34 @@ class Conversor {
     const grupos = estrutura.map((g) => g.map((id) => partes.get(String(id))).filter((x): x is string => !!x)).filter((g) => g.length);
     const expr = grupos.map((g) => (g.length > 1 ? `(${g.join(" && ")})` : g[0])).join(" || ");
     return { expr: grupos.length > 1 ? expr : semParenteses(expr), generalizada };
+  }
+
+  /**
+   * Condição sobre uma conexão: o Pipefy compara com o id do registro ligado. Com a base exportada com
+   * --registros, vira o título do card ligado: filhos("rel").algum(r, r.titulo == "…"). Vazio/preenchido
+   * olham a lista de ligados.
+   */
+  condicaoConexao(b: BoardConv, slug: string, op: string, valor: string | null | undefined): { expr: string } | { motivo: string } {
+    const lista = `card.${slug}`;
+    if (op === "blank") return { expr: `size(${lista}) == 0` };
+    if (op === "present") return { expr: `size(${lista}) > 0` };
+    const alvo = this.boards.find((x) => x.key === b.tpl.fields.find((f) => f.key === slug)?.relation?.board);
+    let ids: string[];
+    try {
+      const v = JSON.parse(String(valor ?? ""));
+      ids = (Array.isArray(v) ? v : [v]).map(String);
+    } catch {
+      ids = String(valor ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    }
+    if (!ids.length) return { motivo: `conexão ${slug}: condição sem registro` };
+    const regs = new Map((alvo?.exp.registros ?? []).map((r) => [r.id, r.title]));
+    const faltam = ids.filter((id) => !regs.has(id));
+    if (faltam.length) return { motivo: `conexão ${slug}: registro ${faltam.join(", ")} de ${alvo?.tpl.name ?? "base"} não exportado (exporte a base com --registros)` };
+    const titulos = ids.map((id) => JSON.stringify(regs.get(id)));
+    const algum = `filhos(${JSON.stringify(slug)}).algum(r, ${titulos.length > 1 ? `r.titulo in [${titulos.join(", ")}]` : `r.titulo == ${titulos[0]}`})`;
+    if (op === "equals" || op === "contains") return { expr: algum };
+    if (op === "not_equals" || op === "not_contains") return { expr: `!${algum}` };
+    return { motivo: `conexão ${slug}: operação ${op} sem equivalente` };
   }
 
   descreverCondicao(b: BoardConv, c: PfCondicao | null | undefined): string {
@@ -1242,6 +1278,7 @@ export function anonimizarExports(exports: PfExport[]): PfExport[] {
       c.description = null;
       if (c.connectedRepo) c.connectedRepo = { ...c.connectedRepo, name: nomeRepo(c.connectedRepo.id) };
     }
+    if (e.registros) e.registros = e.registros.map((r, i) => ({ id: r.id, title: `Registro ${letras(i)}` }));
   }
   const valor = (addr: string, v: string | null) => {
     if (v == null || addr === "current_phase" || v === "" || Number.isFinite(Number(v))) return v;

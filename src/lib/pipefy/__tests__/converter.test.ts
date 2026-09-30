@@ -520,3 +520,82 @@ describe("automações que cabem no motor v1", () => {
     expect(mf.note).toBe("move o card pai: pipe do pai (Pipe não exportado) fora do conjunto exportado");
   });
 });
+
+describe("condicional sobre conexão com base de apoio", () => {
+  // Base exportada com --registros (só id e título); a condição do Pipefy compara com o id do registro.
+  const CATEGORIAS: PfExport = {
+    fonte: "pipefy",
+    id: "cat-1",
+    tipo: "table",
+    repo: { id: "cat-1", name: "Categorias", title_field: { id: "nome" }, table_fields: [campo("nome", "600", "Nome", "short_text")] },
+    automacoes: [],
+    registros: [
+      { id: "501", title: "Obras" },
+      { id: "502", title: "Serviços" },
+    ],
+  };
+  const cond = (id: string, name: string, valor: string, alvo: string, op = "equals") => ({
+    id,
+    name,
+    condition: { expressions: [{ structure_id: "0", field_address: "601", operation: op, value: valor }], expressions_structure: [["0"]] },
+    actions: [{ actionId: "show", whenEvaluator: true, phaseField: { id: alvo } }],
+  });
+  const DESPESAS: PfExport = {
+    fonte: "pipefy",
+    id: "6100",
+    tipo: "pipe",
+    repo: {
+      id: "6100",
+      name: "Despesas",
+      start_form_fields: [
+        campo("d_titulo", "610", "Título", "short_text"),
+        campo("d_cat", "601", "Categoria", "connector", { connectedRepo: { id: "cat-1", name: "Categorias" }, canConnectMultiples: false }),
+        campo("d_obra", "611", "Dados da obra", "long_text"),
+        campo("d_outros", "612", "Detalhe", "long_text"),
+        campo("d_x", "613", "Extra", "long_text"),
+      ],
+      startFormFieldConditions: [
+        cond("c1", "Mostrar obra", "501", "d_obra"),
+        cond("c2", "Esconder detalhe de obras", "[\"501\",\"502\"]", "d_outros", "not_equals"),
+        cond("c3", "Registro sumido", "999", "d_x"),
+      ],
+      phases: [{ id: "61", name: "Aberta", index: 0, fields: [] }],
+    },
+    automacoes: [],
+  };
+  const r = converterPipefy([DESPESAS, CATEGORIAS]);
+  const f = (k: string) => r.template.boards.find((b) => b.name === "Despesas")!.fields.find((x) => x.key === k);
+
+  it("igual ao registro vira título do card ligado; vários registros viram lista; registro não exportado fica com o motivo", () => {
+    expect(validarTemplate(r.template)).toEqual([]);
+    expect(f("dados_da_obra")?.visible).toBe('filhos("categoria").algum(r, r.titulo == "Obras")');
+    expect(f("detalhe")?.visible).toBe('!filhos("categoria").algum(r, r.titulo in ["Obras", "Serviços"])');
+    expect(f("extra")?.visible).toBeUndefined();
+    const rel = r.relatorio.boards.find((b) => b.nome === "Despesas")!;
+    expect(rel.condicionais).toMatchObject({ total: 3, convertidas: 2 });
+    expect(rel.condicionais.naoConvertidas).toEqual(["Registro sumido: conexão categoria: registro 999 de Categorias não exportado (exporte a base com --registros)"]);
+  });
+
+  it("anonimizar troca os títulos dos registros", () => {
+    const a = converterPipefy([DESPESAS, CATEGORIAS], { anonimizar: true });
+    expect(JSON.stringify(a.template)).not.toContain("Obras");
+  });
+});
+
+describe("keys de campo longas", () => {
+  it("rótulos longos que começam com número e colidem continuam keys válidas (≤ 40)", () => {
+    const longo = "69. Imobilizados, equipamentos e materiais de campo";
+    const exp: PfExport = {
+      fonte: "pipefy",
+      id: "8100",
+      tipo: "table",
+      repo: { id: "8100", name: "Longos", table_fields: [campo("l1", "8101", longo, "short_text"), campo("l2", "8102", longo, "short_text"), campo("l3", "8103", "Nome", "short_text")] },
+      automacoes: [],
+    };
+    const r = converterPipefy([exp]);
+    expect(validarTemplate(r.template)).toEqual([]);
+    const keys = r.template.boards[0].fields.map((f) => f.key);
+    expect(new Set(keys).size).toBe(3);
+    expect(keys.every((k) => k.length <= 40)).toBe(true);
+  });
+});

@@ -1,9 +1,10 @@
 // Exporta a ESTRUTURA de pipes/databases do Pipefy via GraphQL (https://api.pipefy.com/graphql):
 // fases, campos (tipo, obrigatório, editável em outras fases, opções, conexões), start form,
 // condicionais de campo, automações (gatilho, condição, ações) e webhooks (só nome e eventos).
-// Nunca lê cards nem registros.
+// Nunca lê cards. Registros de database só com --registros, e só id e título: bases de apoio
+// (categorias, grupos) cujos registros as condições de outro pipe comparam.
 //
-//   pnpm pipefy:export <id> [<id>...] [--saida exports/pipefy]
+//   pnpm pipefy:export <id> [<id>...] [--saida exports/pipefy] [--registros]
 //
 // Token em PIPEFY_TOKEN (variável de ambiente ou .env). A saída (exports/) está no .gitignore:
 // exports contêm dados de configuração do usuário e nunca devem ser versionados.
@@ -48,6 +49,13 @@ const Q_TABELA = `query($id: ID!) { table(id: $id) {
   webhooks { id name actions }
 } }`;
 
+// Registros de database (bases de apoio): só id e título, paginado.
+const Q_REGISTROS = `query($id: ID!, $after: String) { table_records(table_id: $id, first: 50, after: $after) {
+  pageInfo { hasNextPage endCursor }
+  edges { node { id title } }
+} }`;
+const LIMITE_REGISTROS = 2000;
+
 // Automações: sem segredos (cabeçalhos, chaves, OAuth e corpo HTTP ficam de fora; da URL, só o host).
 const Q_AUTOMACOES = `query($org: ID!, $repo: ID, $after: String) { automations(organizationId: $org, repoId: $repo, first: 50, after: $after) {
   pageInfo { hasNextPage endCursor }
@@ -87,10 +95,12 @@ const hostDe = (url: unknown) => {
   }
 };
 
-async function exportar(token: string, id: string) {
+async function exportar(token: string, id: string, comRegistros = false) {
   const naoExportavel: string[] = [];
   let tipo: "pipe" | "table" = "pipe";
-  const rp = await consultar(token, Q_PIPE, { id });
+  // Database tem id alfanumérico (e um pipe interno com o mesmo id): tenta database primeiro.
+  const pareceTabela = !/^d+$/.test(id);
+  const rp = pareceTabela ? { data: {} as Record<string, unknown>, erros: [] as string[] } : await consultar(token, Q_PIPE, { id });
   let repo = rp.data.pipe as Record<string, unknown> | null;
   if (rp.erros.length) console.warn(`${id}: consulta de pipe com erros: ${rp.erros.slice(0, 5).join("; ")}`);
   if (!repo || !Array.isArray(repo.phases)) {
@@ -121,12 +131,28 @@ async function exportar(token: string, id: string) {
   } else if (tipo === "table") {
     naoExportavel.push("automações de databases: não consultadas (o export lista automações por pipe)");
   }
+  let registros: { id: string; title: string }[] | undefined;
+  if (tipo === "table" && comRegistros) {
+    registros = [];
+    let after: string | null = null;
+    do {
+      const r = await consultar(token, Q_REGISTROS, { id, after });
+      if (r.erros.length) {
+        naoExportavel.push(`registros: ${r.erros.join("; ")}`);
+        break;
+      }
+      const con = r.data.table_records as { pageInfo: { hasNextPage: boolean; endCursor: string | null }; edges: { node: { id: string; title: string } }[] };
+      for (const e of con.edges) registros.push({ id: String(e.node.id), title: String(e.node.title ?? "") });
+      after = con.pageInfo.hasNextPage && registros.length < LIMITE_REGISTROS ? con.pageInfo.endCursor : null;
+    } while (after);
+    if (registros.length >= LIMITE_REGISTROS) naoExportavel.push(`registros: limitado aos primeiros ${LIMITE_REGISTROS}`);
+  }
   naoExportavel.push(
     "fórmulas de automação (run_a_formula): a API expõe o mapa de campos, não as operações da fórmula",
     "preencher automaticamente das conexões (autoFillFields): a API só responde para um card de origem; o conversor infere das automações que copiam %{conexão.campo}",
-    "valores de exemplo, cards e registros: fora do escopo (só estrutura)",
+    registros ? "cards e demais campos dos registros: fora do escopo (dos registros, só id e título)" : "valores de exemplo, cards e registros: fora do escopo (só estrutura)",
   );
-  return { fonte: "pipefy", versao_export: 1, exportado_em: new Date().toISOString(), id, tipo, repo, automacoes, nao_exportavel: naoExportavel };
+  return { fonte: "pipefy", versao_export: 1, exportado_em: new Date().toISOString(), id, tipo, repo, automacoes, ...(registros ? { registros } : {}), nao_exportavel: naoExportavel };
 }
 
 async function main() {
@@ -139,16 +165,17 @@ async function main() {
   const iSaida = args.indexOf("--saida");
   const saida = iSaida >= 0 ? args[iSaida + 1] : "exports/pipefy";
   const ids = args.filter((a, i) => !a.startsWith("--") && (iSaida < 0 || i !== iSaida + 1));
+  const comRegistros = args.includes("--registros");
   const token = process.env.PIPEFY_TOKEN?.trim();
-  if (!ids.length) throw new Error("uso: pnpm pipefy:export <id> [<id>...] [--saida exports/pipefy]");
+  if (!ids.length) throw new Error("uso: pnpm pipefy:export <id> [<id>...] [--saida exports/pipefy] [--registros]");
   if (!token) throw new Error("defina PIPEFY_TOKEN (ambiente ou .env)");
   mkdirSync(saida, { recursive: true });
   for (const id of ids) {
-    const e = await exportar(token, id);
+    const e = await exportar(token, id, comRegistros);
     const arq = join(saida, `${id}.json`);
     writeFileSync(arq, JSON.stringify(e, null, 2));
     const r = e.repo as { phases?: unknown[]; start_form_fields?: unknown[]; table_fields?: unknown[] };
-    console.log(`${id} (${e.tipo}): ${r.phases?.length ?? 0} fases, ${e.automacoes.length} automações → ${arq}`);
+    console.log(`${id} (${e.tipo}): ${r.phases?.length ?? 0} fases, ${e.automacoes.length} automações${e.registros ? `, ${e.registros.length} registros` : ""} → ${arq}`);
   }
 }
 
