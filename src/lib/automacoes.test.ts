@@ -20,6 +20,13 @@ describe("passos", () => {
     expect(() => normalizarPassos([{ type: "move_card", phase: "x" }, { type: "set_field", field: "f", expr: "card.a +" }])).toThrow(/passo 2/);
   });
 
+  it("alvo: este card some do JSON; pai/filhos exigem relação", () => {
+    expect(normalizarPassos([{ type: "move_card", phase: "f", target: { type: "self" } }])).toEqual([{ type: "move_card", phase: "f" }]);
+    expect(normalizarPassos([{ type: "add_comment", body: "x", target: { type: "children", relation: "r" } }])[0]).toEqual({ type: "add_comment", body: "x", target: { type: "children", relation: "r" } });
+    expect(() => normalizarPassos([{ type: "set_field", field: "f", value: 1, target: { type: "parent" } }])).toThrow(/relação do alvo/);
+    expect(() => normalizarPassos([{ type: "set_field", field: "f", value: 1, target: { type: "primo", relation: "r" } }])).toThrow(/alvo inválido/);
+  });
+
   it("modelos {{ }} validados; http exige URL e método", () => {
     expect(() => normalizarPassos([{ type: "send_email", to: "a@b", subject: "{{ card.( }}" }])).toThrow(/passo 1/);
     expect(() => normalizarPassos([{ type: "http_request", method: "GET", url: "ftp://x" }])).toThrow(/URL/);

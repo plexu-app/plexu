@@ -34,15 +34,24 @@ export const TIPOS_GATILHO: { tipo: TipoGatilho; rotulo: string }[] = [
 // Passos
 // ---------------------------------------------------------------------------
 
+/**
+ * Card(s) em que um passo age. Padrão: o card do gatilho. parent/children: os cards ligados a ele pela
+ * relação, com o mesmo sentido de pai/pais()/filhos() nas expressões (relação is_parent: origem é filho;
+ * relação comum: a origem vê os destinos como filhos). Expressões e modelos são avaliados no card do gatilho.
+ */
+export type Alvo = { type: "self" } | { type: "parent" | "children"; relation: string };
+
+export const ROTULO_ALVO: Record<Alvo["type"], string> = { self: "Este card", parent: "Pai", children: "Filhos" };
+
 export type Passo =
-  | { type: "move_card"; phase: string }
-  /** value literal (null limpa) ou expr (CEL no contexto do card). */
-  | { type: "set_field"; field: string; value?: unknown; expr?: string }
+  | { type: "move_card"; phase: string; target?: Alvo }
+  /** value literal (null limpa) ou expr (CEL no contexto do card do gatilho). */
+  | { type: "set_field"; field: string; value?: unknown; expr?: string; target?: Alvo }
   /** Cria card em board; relation (opcional) liga ao card do gatilho; fields: id do campo → CEL. */
   | { type: "create_related_card"; board: string; relation?: string | null; phase?: string | null; fields: Record<string, string> }
   | { type: "send_email"; to: string; subject: string; body: string }
   | { type: "http_request"; method: string; url: string; headers?: Record<string, string>; body?: string }
-  | { type: "add_comment"; body: string };
+  | { type: "add_comment"; body: string; target?: Alvo };
 
 export type TipoPasso = Passo["type"];
 
@@ -115,20 +124,29 @@ export function normalizarGatilho(g: unknown): Gatilho {
   }
 }
 
+/** Alvo do passo; "este card" some do JSON (compatível com passos sem target). */
+function alvoDe(o: Record<string, unknown>, onde: string): { target?: Alvo } {
+  const t = (o.target ?? {}) as Record<string, unknown>;
+  if (!o.target || t.type === "self" || !t.type) return {};
+  exigir(t.type === "parent" || t.type === "children", `${onde}: alvo inválido`);
+  exigir(texto(t.relation), `${onde}: escolha a relação do alvo`);
+  return { target: { type: t.type as "parent" | "children", relation: texto(t.relation) } };
+}
+
 export function normalizarPasso(p: unknown, i: number): Passo {
   const o = (p ?? {}) as Record<string, unknown>;
   const onde = `passo ${i + 1}`;
   switch (o.type) {
     case "move_card":
       exigir(texto(o.phase), `${onde}: escolha a fase de destino`);
-      return { type: "move_card", phase: texto(o.phase) };
+      return { type: "move_card", phase: texto(o.phase), ...alvoDe(o, onde) };
     case "set_field": {
       exigir(texto(o.field), `${onde}: escolha o campo`);
       if (texto(o.expr)) {
         exprValida(texto(o.expr), onde);
-        return { type: "set_field", field: texto(o.field), expr: texto(o.expr) };
+        return { type: "set_field", field: texto(o.field), expr: texto(o.expr), ...alvoDe(o, onde) };
       }
-      return { type: "set_field", field: texto(o.field), value: o.value === undefined || o.value === "" ? null : o.value };
+      return { type: "set_field", field: texto(o.field), value: o.value === undefined || o.value === "" ? null : o.value, ...alvoDe(o, onde) };
     }
     case "create_related_card": {
       exigir(texto(o.board), `${onde}: escolha o board do novo card`);
@@ -157,7 +175,7 @@ export function normalizarPasso(p: unknown, i: number): Passo {
     case "add_comment":
       exigir(texto(o.body), `${onde}: escreva o comentário`);
       validarModelo(texto(o.body), onde);
-      return { type: "add_comment", body: texto(o.body) };
+      return { type: "add_comment", body: texto(o.body), ...alvoDe(o, onde) };
     default:
       throw new ErroAutomacao(`${onde}: tipo de passo desconhecido: ${String(o.type)}`);
   }

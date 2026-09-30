@@ -73,11 +73,24 @@ async function validarReferencias(tx: Tx, a: Alvo, gatilho: Gatilho | null, pass
       if (!(await fasesDe(filhos)).has(gatilho.phase)) throw new ErroConfig("gatilho: fase não é do board dos filhos");
     }
   }
+  /** Board do outro lado de uma relação que liga este board (de qualquer lado). */
+  const outroLado = async (relacao: string, onde: string) => {
+    const [rel] = await tx.select().from(fields).where(and(eq(fields.id, relacao), eq(fields.type, "relation"), isNull(fields.archivedAt)));
+    const alvo = String((rel?.config as { relation?: { target_board?: string } } | undefined)?.relation?.target_board ?? "");
+    const outro = rel?.boardId === b.id ? alvo : alvo === b.id ? rel?.boardId : null;
+    if (!rel || !outro || !boardsWs.has(outro)) throw new ErroConfig(`${onde}: a relação do alvo não liga este board a outro`);
+    return outro;
+  };
   for (const [i, p] of passos.entries()) {
     const onde = `passo ${i + 1}`;
-    if (p.type === "move_card") exigirFase(p.phase, onde);
+    // Alvo pai/filhos: fase e campo são do board do outro lado da relação.
+    const alvoBoard = "target" in p && p.target && p.target.type !== "self" ? await outroLado(p.target.relation, onde) : b.id;
+    const fasesAlvo = alvoBoard === b.id ? fases : await fasesDe(alvoBoard);
+    const camposAlvo = alvoBoard === b.id ? campos : await camposDe(alvoBoard);
+    if (p.type === "move_card" && !fasesAlvo.has(p.phase)) throw new ErroConfig(`${onde}: fase não encontrada no board do card alvo`);
     if (p.type === "set_field") {
-      const c = exigirCampo(p.field, onde);
+      const c = camposAlvo.get(p.field);
+      if (!c) throw new ErroConfig(`${onde}: campo não encontrado no board do card alvo`);
       if (["rollup", "dynamic_text", "formula", "sequence"].includes(c.type)) throw new ErroConfig(`${onde}: o campo ${c.name} é calculado`);
     }
     if (p.type === "create_related_card") {

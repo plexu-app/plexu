@@ -6,7 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { actions, automationRuns, automations, boards, cards, fields } from "../db/schema";
 import { addComment, avaliarNoCard, CoreError, createCard, linkCards, moveCard, updateFields, type Actor, type Tx } from "../core";
-import { normalizarPassos, textoDoValor, trechosModelo, type Passo } from "../lib/automacoes";
+import { normalizarPassos, textoDoValor, trechosModelo, type Alvo, type Passo } from "../lib/automacoes";
 import { ExprError, type Registro } from "../lib/expr";
 import { efeitosReais, ErroTransitorio, type Efeitos } from "./efeitos";
 import { lerVariaveis, mascarar, smtpDoWorkspace, type Smtp, type Variaveis } from "./segredos";
@@ -73,17 +73,46 @@ const exigirCard = (ctx: Contexto) => {
   return ctx.cardId;
 };
 
+/**
+ * Cards em que o passo age: o do gatilho, ou os ligados a ele pela relação no papel pedido — mesmo
+ * sentido de pai/pais()/filhos() nas expressões. Ligações e cards excluídos não contam.
+ */
+async function alvosDoPasso(ctx: Contexto, alvo: Alvo | undefined): Promise<string[]> {
+  const eu = exigirCard(ctx);
+  if (!alvo || alvo.type === "self") return [eu];
+  const [rel] = await ctx.tx.select({ config: fields.config, type: fields.type }).from(fields).where(eq(fields.id, alvo.relation));
+  if (rel?.type !== "relation") throw new ErroPasso("relação do alvo não encontrada");
+  const isParent = (rel.config as { relation?: { is_parent?: boolean } }).relation?.is_parent === true;
+  // Destinos (origem = este card) são pais numa relação is_parent e filhos numa relação comum.
+  const destinos = isParent === (alvo.type === "parent");
+  const rows = await ctx.tx.execute<{ id: string }>(
+    destinos
+      ? sql`select l.to_card_id as id from card_links l join cards c on c.id = l.to_card_id
+            where l.field_id = ${alvo.relation} and l.from_card_id = ${eu} and l.deleted_at is null and c.deleted_at is null order by c.created_at`
+      : sql`select l.from_card_id as id from card_links l join cards c on c.id = l.from_card_id
+            where l.field_id = ${alvo.relation} and l.to_card_id = ${eu} and l.deleted_at is null and c.deleted_at is null order by c.created_at`,
+  );
+  return [...new Set(rows.map((r) => r.id))].filter((id) => id !== eu);
+}
+
+const semAlvo = (alvo: Alvo | undefined) => ({ status: "info" as const, mensagem: `nenhum card ${alvo?.type === "parent" ? "pai" : "filho"} ligado: nada a fazer` });
+const detalheAlvo = (alvo: Alvo | undefined, ids: string[]) => (alvo && alvo.type !== "self" ? { alvo: alvo.type === "parent" ? "pai" : "filhos", cards: ids } : {});
+
 async function executarPasso(ctx: Contexto, p: Passo): Promise<Omit<ItemLog, "passo" | "tipo" | "ms">> {
   const m = (s: string) => mascarar(s, ctx.vars.segredos);
   switch (p.type) {
     case "move_card": {
-      const c = await moveCard({ cardId: exigirCard(ctx), toPhaseId: p.phase, actor: ctx.actor }, { tx: ctx.tx });
-      return { status: "ok", detalhe: { fase: c.phaseId } };
+      const alvos = await alvosDoPasso(ctx, p.target);
+      if (!alvos.length) return semAlvo(p.target);
+      for (const id of alvos) await moveCard({ cardId: id, toPhaseId: p.phase, actor: ctx.actor }, { tx: ctx.tx });
+      return { status: "ok", detalhe: { fase: p.phase, ...detalheAlvo(p.target, alvos) } };
     }
     case "set_field": {
+      const alvos = await alvosDoPasso(ctx, p.target);
+      if (!alvos.length) return semAlvo(p.target);
       const valor = p.expr ? (await avaliar(ctx, [p.expr]))[0] : (p.value ?? null);
-      await updateFields({ cardId: exigirCard(ctx), props: { [p.field]: valor }, actor: ctx.actor }, { tx: ctx.tx });
-      return { status: "ok", detalhe: { campo: p.field, valor } };
+      for (const id of alvos) await updateFields({ cardId: id, props: { [p.field]: valor }, actor: ctx.actor }, { tx: ctx.tx });
+      return { status: "ok", detalhe: { campo: p.field, valor, ...detalheAlvo(p.target, alvos) } };
     }
     case "create_related_card": {
       const [b] = await ctx.tx.select({ workspaceId: boards.workspaceId }).from(boards).where(eq(boards.id, p.board));
@@ -104,9 +133,11 @@ async function executarPasso(ctx: Contexto, p: Passo): Promise<Omit<ItemLog, "pa
       return { status: "ok", detalhe: { card: novo.id, titulo: novo.title } };
     }
     case "add_comment": {
+      const alvos = await alvosDoPasso(ctx, p.target);
+      if (!alvos.length) return semAlvo(p.target);
       const body = await renderizar(ctx, p.body);
-      await addComment({ cardId: exigirCard(ctx), body, actor: ctx.actor }, { tx: ctx.tx });
-      return { status: "ok", detalhe: { comentario: m(body) } };
+      for (const id of alvos) await addComment({ cardId: id, body, actor: ctx.actor }, { tx: ctx.tx });
+      return { status: "ok", detalhe: { comentario: m(body), ...detalheAlvo(p.target, alvos) } };
     }
     case "send_email": {
       const [to, subject, text] = [await renderizar(ctx, p.to), await renderizar(ctx, p.subject), await renderizar(ctx, p.body)];
