@@ -49,6 +49,22 @@ Decisões:
 - **Relações em `props`.** `createCard`/`updateFields` aceitam o campo de relação com a lista de destinos; o core converte em ligações (diff) com as mesmas checagens de `linkCards`.
 - **Configuração dos calculados.** `rollup: { via_field, agg: count|sum|avg|min|max, expr?, filter_expr? }`: `via_field` é o campo de relação (deste board: agrega os destinos; do outro board: agrega as origens). `expr` é um slug do card relacionado ou CEL com `card` = item; `filter_expr` idem, com `pai` = card que agrega. `dynamic_text: { template }` com trechos `{slug}` ou `{expressão CEL}`; erro vira `#ERRO` no texto em vez de bloquear a escrita.
 
+## Automações (v1, modo simples)
+
+```
+core (transação) ── events ──▶ worker: despacho (1 s) ──▶ automation_runs "queued" ──▶ pg-boss ──▶ executor
+                                  agendados (30 s): cron / campo de data ─┘                      │
+                                                                                                  ▼
+                               core (transação marcada com plexu.run_id) ◀── condição → passos (para no 1º erro)
+```
+
+- **Configuração**: `automations.trigger` / `steps` no formato de `src/lib/automacoes.ts` (validação pura, usada também pela UI). Gatilhos: `card_created`, `card_entered_phase`, `card_left_phase`, `field_updated` (lista de campos; vários na mesma escrita = um disparo), `all_children_in_phase` (relação + fase dos filhos; dispara no pai quando o último filho entra), `scheduled` (campo de data ± N dias na hora H, ou cron de 5 campos no fuso do workspace). Passos: `move_card`, `set_field` (valor literal, null ou CEL), `create_related_card` (board, relação de qualquer lado, fase, campo → CEL), `send_email`, `http_request`, `add_comment`. Modelos de texto usam `{{ expressão CEL }}` e `{{ var.NOME }}`.
+- **Despacho** (`src/automacoes/despacho.ts`): automações nunca são chamadas direto (invariante 4). O worker reivindica eventos recentes ainda não despachados (`automation_dispatch`, sem cursor: aguenta commits fora de ordem) e cria `automation_runs` "queued" — a fila durável; o pg-boss (fila `automacao.execucao`, política exclusive por execução) só leva o id ao executor. Execução sem job (queda) é reenviada pela varredura. Eventos anteriores à última alteração da automação não disparam.
+- **Execução** (`src/automacoes/executor.ts`): condição (CEL, mesmo contexto das regras, via `core.avaliarNoCard`) e passos numa transação só: **atômica** para cards (erro no passo N desfaz os anteriores; e-mail/HTTP já enviados não voltam — ponha-os no fim). Automação roda como ator `automation` (o "system" com o id da automação); escrita em cards só pelo core, com as regras valendo. Log por passo, tentativas (falha transitória: rede, 5xx, 429, deadlock → nova tentativa com backoff, até 3; depois `dead`).
+- **Loop**: o executor grava `plexu.run_id` na transação (`set_config` local); `events.automation_run_id` tem esse valor como default, então todo evento gerado (inclusive em savepoints do core) aponta a execução causadora. O despacho herda profundidade e cadeia: `suppress_triggers` não dispara nada; a mesma automação não roda de novo no mesmo ciclo; profundidade acima de 5 vira `skipped` com o motivo.
+- **Ambientes**: `draft` não dispara; `test` executa e loga, mas a transação é desfeita no fim e e-mail/HTTP são simulados (dry-run, nada gravado, sem cascata); `published` executa de verdade.
+- **Segredos**: `variables` (secretas cifradas com AES-256-GCM, chave derivada do `APP_SECRET`) e `connections` (SMTP do workspace; senha numa variável secreta). Valores secretos são mascarados no log. Sem SMTP, o e-mail fica "não enviado" e a execução segue.
+
 ## UI (v0.1)
 
 ```
