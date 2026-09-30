@@ -151,6 +151,26 @@ describe("fase, usuario e hoje()", () => {
   });
 });
 
+describe("texto: upper(), lower(), trim()", () => {
+  const c = { card: { nome: "  João da Silva  ", vazio: null, n: 3 } };
+  it("maiúsculas/minúsculas com acentos; trim tira espaços das pontas", () => {
+    expect(evaluate("upper(card.nome)", c)).toBe("  JOÃO DA SILVA  ");
+    expect(evaluate("lower(card.nome)", c)).toBe("  joão da silva  ");
+    expect(evaluate("trim(card.nome)", c)).toBe("João da Silva");
+    expect(evaluate("upper(trim(card.nome))", c)).toBe("JOÃO DA SILVA");
+    expect(evaluate('upper("ação é çé")', c)).toBe("AÇÃO É ÇÉ");
+  });
+  it("campo vazio (null) ou ausente devolve null, sem erro", () => {
+    expect(evaluate("upper(card.vazio)", c)).toBeNull();
+    expect(evaluate("trim(card.nao_existe)", c)).toBeNull();
+    expect(evaluateBool("upper(card.vazio) == null", c)).toBe(true);
+  });
+  it("tipo errado dá erro claro; expressão válida para parse e lint", () => {
+    expect(() => evaluate("upper(card.n)", c)).toThrow("upper() espera texto");
+    expect(parse("upper(card.nome) == \"X\"")).toMatchObject({ ok: true, referencias: { card: ["nome"] } });
+  });
+});
+
 describe("existe() e cartoes()", () => {
   it("existe(board, x, cond)", () => {
     expect(evaluateBool('existe("parceiros", p, p.cnpj == card.cnpj)', ctx)).toBe(true);

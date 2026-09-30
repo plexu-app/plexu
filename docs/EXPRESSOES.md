@@ -52,6 +52,16 @@ Métodos de lista:
 | `.contar()` | quantidade de elementos |
 | `.soma(<slug>)` | soma numérica do campo; `null`/não numérico contam 0 |
 
+Funções de texto (aceitam campo vazio: `null` entra, `null` sai; outro tipo dá erro):
+
+| Função | Resultado |
+|---|---|
+| `upper(x)` | maiúsculas, com acentos (`upper("joão")` → `"JOÃO"`) |
+| `lower(x)` | minúsculas, com acentos |
+| `trim(x)` | sem espaços nas pontas |
+
+Componha à vontade: `upper(trim(card.razao_social))`. Em texto que nunca é `null`, os métodos do CEL também servem: `.startsWith()`, `.endsWith()`, `.contains()`, `.matches()` (regex), `.upperAscii()`, `.lowerAscii()`, `.trim()`, `.indexOf()`, `.substring()`, `size()`.
+
 As macros padrão do CEL continuam disponíveis e compõem com as acima: `filter`, `map`, `exists`, `all`, `size`, `in`, ternário `? :`. Campo ausente lê como `null`; `has(card.x)` diz se a chave existe em props/computed (valor `null` presente conta como presente; chave com `undefined` conta como ausente).
 
 ## Exemplos
@@ -74,6 +84,9 @@ card.valor >= 50000 && usuario.id != card.solicitante
 
 // prazo vencido
 hoje() > card.prazo
+
+// texto padronizado (ex.: set_field de automação num campo que só aceita maiúsculas)
+upper(trim(card.razao_social))
 
 // fórmula
 filhos("parcelas").soma("valor") - filhos("parcelas").filter(p, p.pago).soma("valor")
