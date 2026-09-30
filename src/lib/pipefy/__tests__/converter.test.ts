@@ -581,3 +581,21 @@ describe("condicional sobre conexão com base de apoio", () => {
     expect(JSON.stringify(a.template)).not.toContain("Obras");
   });
 });
+
+describe("keys de campo longas", () => {
+  it("rótulos longos que começam com número e colidem continuam keys válidas (≤ 40)", () => {
+    const longo = "69. Imobilizados, equipamentos e materiais de campo";
+    const exp: PfExport = {
+      fonte: "pipefy",
+      id: "8100",
+      tipo: "table",
+      repo: { id: "8100", name: "Longos", table_fields: [campo("l1", "8101", longo, "short_text"), campo("l2", "8102", longo, "short_text"), campo("l3", "8103", "Nome", "short_text")] },
+      automacoes: [],
+    };
+    const r = converterPipefy([exp]);
+    expect(validarTemplate(r.template)).toEqual([]);
+    const keys = r.template.boards[0].fields.map((f) => f.key);
+    expect(new Set(keys).size).toBe(3);
+    expect(keys.every((k) => k.length <= 40)).toBe(true);
+  });
+});

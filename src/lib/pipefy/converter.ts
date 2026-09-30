@@ -163,9 +163,13 @@ interface BoardConv {
   rel: RelatorioBoard;
 }
 
-const unico = (base: string, usados: Set<string>, sep = "_") => {
-  let k = base;
-  for (let i = 2; usados.has(k); i++) k = `${base}${sep}${i}`;
+/** Key livre: base, base_2, base_3… sem passar de max caracteres (keys de campo: 40). */
+const unico = (base: string, usados: Set<string>, sep = "_", max = 40) => {
+  let k = base.slice(0, max);
+  for (let i = 2; usados.has(k); i++) {
+    const sufixo = `${sep}${i}`;
+    k = `${base.slice(0, max - sufixo.length)}${sufixo}`;
+  }
   usados.add(k);
   return k;
 };

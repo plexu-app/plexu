@@ -21,5 +21,6 @@ export function slugLivre(base: string, usados: Iterable<string>): string {
 /** Slug de campo: identificador válido em CEL (letras, dígitos, _; não começa com dígito). */
 export function slugCampo(texto: string): string {
   const s = slugify(texto, 40).replace(/-/g, "_");
-  return /^[0-9]/.test(s) ? `c_${s}` : s;
+  // Identificador CEL não começa com dígito: prefixo c_, sem passar de 40 caracteres.
+  return /^[0-9]/.test(s) ? `c_${s}`.slice(0, 40).replace(/_+$/, "") : s;
 }
