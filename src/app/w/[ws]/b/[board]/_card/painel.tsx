@@ -5,6 +5,7 @@
 // inversas (cards de outros boards que apontam para este) e some se não houver nenhuma.
 import Link from "next/link";
 import { estadoDosCampos, movimentosDoCard } from "@/core";
+import { AcoesCard } from "@/components/card/acoes-card";
 import { CampoAnterior } from "@/components/card/campo-anterior";
 import { Comentarios } from "@/components/card/comentarios";
 import { FormCampos } from "@/components/card/form-campos";
@@ -19,6 +20,7 @@ import { descreverEvento, formatarDataHora, formatarValor, idCurto, TIPOS_CALCUL
 import { exigirBoard, exigirCard, exigirMembro } from "@/server/acesso";
 import { anexosPorIds } from "@/server/anexos/servico";
 import { origemDoEspelho } from "@/server/espelhos";
+import { acoesDoCard } from "@/server/automacoes";
 import { ajustesDoBoard } from "@/server/config-board";
 import { camposDaFase, hojeSP, obrigatoriosPossiveis } from "../_lib/campos-da-fase";
 import {
@@ -288,21 +290,24 @@ export async function PainelCard({ ws, board, cardId, voltarPara }: { ws: string
         </>
       }
       lateral={
-        <LateralCard
-          ws={ws}
-          board={b.slug}
-          cardId={card.id}
-          voltarPara={voltarPara}
-          responsavel={cartao?.responsavel ?? null}
-          prazo={cartao?.prazo ?? null}
-          movimentos={
-            movimentos?.map((m) => ({
-              ...m,
-              nome: b.fases.find((f) => f.id === m.faseId)?.name ?? "",
-              volta: !!fase && (posicao.get(m.faseId) ?? 0) < fase.position,
-            })) ?? null
-          }
-        />
+        <>
+          <LateralCard
+            ws={ws}
+            board={b.slug}
+            cardId={card.id}
+            voltarPara={voltarPara}
+            responsavel={cartao?.responsavel ?? null}
+            prazo={cartao?.prazo ?? null}
+            movimentos={
+              movimentos?.map((m) => ({
+                ...m,
+                nome: b.fases.find((f) => f.id === m.faseId)?.name ?? "",
+                volta: !!fase && (posicao.get(m.faseId) ?? 0) < fase.position,
+              })) ?? null
+            }
+          />
+          <AcoesCard ws={ws} board={b.slug} cardId={card.id} acoes={await acoesDoCard(b.id, card.id, ctx.actor)} />
+        </>
       }
       abas={{
         relacionados: totalInversos > 0 ? <div className="flex flex-col gap-4">{inversos}</div> : null,

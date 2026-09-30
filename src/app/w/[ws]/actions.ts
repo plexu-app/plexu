@@ -7,6 +7,7 @@ import { addComment, CoreError, createCard, deleteCard, linkCards, moveCard, unl
 import { exigirBoard, exigirCard, exigirConfigurador, exigirMembro } from "@/server/acesso";
 import { criarFilho } from "@/server/cards";
 import { origemDoEspelho } from "@/server/espelhos";
+import { executarAcao } from "@/server/automacoes";
 import { criarBoard, ErroConfig } from "@/server/config";
 import { ajustesDoBoard } from "@/server/config-board";
 import { boardPorId, buscarCards, cardDoWorkspace, type BoardCompleto } from "@/server/consultas";
@@ -267,4 +268,23 @@ export async function criarFilhoComCamposAction(
   const props = await propsDaCriacao(bf, bf.fases[0]?.id ?? null, form);
   if (!Object.keys(props).length) return { ok: false, motivo: "Preencha ao menos um campo para criar o card." };
   return criarComTratamento(ws, board, () => criarFilho({ actor: ctx.actor, paiId: cardId, campo, lado, boardFilhoId: bf.id, props }));
+}
+
+// ---------------------------------------------------------------------------
+// Ações (botão no card): qualquer membro executa; regras do core valem para o usuário.
+// ---------------------------------------------------------------------------
+
+export type ResultadoAcao = { ok: true; status: string; erro: string | null; log: unknown[] } | { ok: false; motivo: string };
+
+export async function executarAcaoAction(ws: string, board: string, cardId: string, actionId: string, form: Record<string, unknown>): Promise<ResultadoAcao> {
+  const ctx = await exigirMembro(ws);
+  const b = await exigirBoard(ctx, board);
+  await exigirCard(b, cardId);
+  let saida: ResultadoAcao = { ok: false, motivo: "Erro inesperado. Tente novamente." };
+  const r = await tentar(async () => {
+    const run = await executarAcao({ wsId: ctx.ws.id, boardId: b.id, actor: ctx.actor }, actionId, cardId, form && typeof form === "object" ? form : {});
+    saida = { ok: true, status: run.status, erro: run.error, log: run.log as unknown[] };
+  });
+  revalidatePath(caminhoBoard(ws, board), "layout");
+  return r.ok ? saida : r;
 }
