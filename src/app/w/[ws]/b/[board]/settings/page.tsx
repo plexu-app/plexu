@@ -4,12 +4,16 @@ import { ConfigCampos } from "@/components/config/config-campos";
 import { ConfigCartao } from "@/components/config/config-cartao";
 import { ConfigFases } from "@/components/config/config-fases";
 import { ConfigRegras } from "@/components/config/config-regras";
+import { ConfigAcoes } from "@/components/automacoes/config-acoes";
+import { ConfigAutomacoes } from "@/components/automacoes/config-automacoes";
+import { Execucoes } from "@/components/automacoes/execucoes";
+import { acoesDoBoard, automacoesDoBoard, estruturaParaAutomacoes, execucoesDoBoard } from "@/server/automacoes";
 import { cn } from "@/lib/utils";
 import { exigirBoard, exigirMembro, podeConfigurar } from "@/server/acesso";
 import { dadosConfiguracao } from "@/server/config-board";
 import type { BoardCompleto } from "@/server/consultas";
 
-type Aba = "fases" | "campos" | "regras";
+type Aba = "fases" | "campos" | "regras" | "automacoes" | "acoes" | "execucoes";
 
 /** Campos oferecidos no construtor de condições: campos do board (exceto relações) e as fases. */
 function camposCondicao(b: BoardCompleto): CampoCondicao[] {
@@ -28,7 +32,13 @@ function camposCondicao(b: BoardCompleto): CampoCondicao[] {
   ];
 }
 
-export default async function Configuracoes({ params, searchParams }: { params: Promise<{ ws: string; board: string }>; searchParams: Promise<{ aba?: string }> }) {
+export default async function Configuracoes({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ ws: string; board: string }>;
+  searchParams: Promise<{ aba?: string; automacao?: string; acao?: string; status?: string }>;
+}) {
   const { ws, board } = await params;
   const ctx = await exigirMembro(ws);
   const b = await exigirBoard(ctx, board);
@@ -39,8 +49,12 @@ export default async function Configuracoes({ params, searchParams }: { params: 
     ...(b.kind === "workflow" ? [{ id: "fases" as const, rotulo: "Fases" }] : []),
     { id: "campos", rotulo: "Campos" },
     { id: "regras", rotulo: "Regras" },
+    { id: "automacoes", rotulo: "Automações" },
+    { id: "acoes", rotulo: "Ações" },
+    { id: "execucoes", rotulo: "Execuções" },
   ];
-  const pedida = (await searchParams).aba as Aba | undefined;
+  const sp = await searchParams;
+  const pedida = sp.aba as Aba | undefined;
   const aba: Aba = abas.some((a) => a.id === pedida) ? pedida! : abas[0].id;
 
   const d = await dadosConfiguracao(ctx.ws.id, b.id);
@@ -110,6 +124,51 @@ export default async function Configuracoes({ params, searchParams }: { params: 
           regras={d.regras.map((r) => ({ id: r.id, kind: r.kind, phaseId: r.phaseId, fieldId: r.fieldId, expr: r.expr, message: r.message, onFail: r.onFail, enabled: r.enabled }))}
         />
       )}
+      {(aba === "automacoes" || aba === "acoes") && (
+        <PainelAutomacoes aba={aba} ws={ws} wsId={ctx.ws.id} b={b} fases={fases} condicoes={condicoes} />
+      )}
+      {aba === "execucoes" && (
+        <Execucoes
+          ws={ws}
+          board={b.slug}
+          linhas={await execucoesDoBoard(b.id, { automacao: sp.automacao, acao: sp.acao, status: sp.status })}
+          origens={[
+            ...(await automacoesDoBoard(b.id)).map((a) => ({ id: a.id, nome: a.nome, tipo: "automacao" as const })),
+            ...(await acoesDoBoard(b.id)).map((a) => ({ id: a.id, nome: a.nome, tipo: "acao" as const })),
+          ]}
+        />
+      )}
     </main>
   );
+}
+
+/** Abas de automações e ações: mesma estrutura de board/campos/fases/relações para os editores. */
+async function PainelAutomacoes({
+  aba,
+  ws,
+  wsId,
+  b,
+  fases,
+  condicoes,
+}: {
+  aba: "automacoes" | "acoes";
+  ws: string;
+  wsId: string;
+  b: BoardCompleto;
+  fases: { id: string; name: string }[];
+  condicoes: CampoCondicao[];
+}) {
+  const e = await estruturaParaAutomacoes(wsId, b.id);
+  const ctx = {
+    ws,
+    board: b.slug,
+    boardId: b.id,
+    fases: fases.map((f) => ({ id: f.id, name: f.name })),
+    campos: b.campos.map((c) => ({ id: c.id, slug: c.slug, name: c.name, type: c.type })),
+    boards: e.boards,
+    relacoes: e.relacoes,
+    condicoes,
+  };
+  if (aba === "automacoes") return <ConfigAutomacoes ctx={ctx} automacoes={await automacoesDoBoard(b.id)} />;
+  return <ConfigAcoes ctx={ctx} acoes={await acoesDoBoard(b.id)} />;
 }
