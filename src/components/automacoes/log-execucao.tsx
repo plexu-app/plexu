@@ -14,7 +14,7 @@ interface Item {
 }
 
 const ROTULO = new Map<string, string>([...TIPOS_PASSO.map((t) => [t.tipo, t.rotulo] as [string, string]), ["condicao", "Condição"], ["simulacao", "Simulação"], ["info", "Aviso"], ["erro", "Erro"]]);
-const COR: Record<string, string> = { ok: "text-emerald-700 dark:text-emerald-400", erro: "text-destructive", simulado: "text-amber-700 dark:text-amber-400", nao_enviado: "text-amber-700 dark:text-amber-400", info: "text-muted-foreground" };
+const COR: Record<string, string> = { ok: "text-ok", erro: "text-destructive", simulado: "text-warn", nao_enviado: "text-warn", info: "text-muted-foreground" };
 const STATUS_ITEM: Record<string, string> = { ok: "ok", erro: "erro", simulado: "simulado", nao_enviado: "não enviado", info: "" };
 
 export const ROTULO_STATUS: Record<string, string> = {

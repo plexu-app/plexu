@@ -105,7 +105,7 @@ export function ConstrutorCondicoes({
         </Button>
       </div>
       {aviso && (
-        <p className="flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-800" role="status">
+        <p className="flex items-center gap-1 rounded bg-warn-soft px-2 py-1 text-xs text-warn" role="status">
           <AlertTriangle className="size-3.5" /> {aviso}
         </p>
       )}
@@ -125,11 +125,11 @@ export function ConstrutorCondicoes({
             )}
             {validacao?.ok && (
               <>
-                <p className="flex items-center gap-1 text-xs text-emerald-700">
+                <p className="flex items-center gap-1 text-xs text-ok">
                   <CheckCircle2 className="size-3.5" /> Expressão válida
                 </p>
                 {validacao.avisos.map((a, i) => (
-                  <p key={i} className="flex items-center gap-1 text-xs text-amber-700">
+                  <p key={i} className="flex items-center gap-1 text-xs text-warn">
                     <AlertTriangle className="size-3.5" /> {a.tipo}: {a.mensagem}
                   </p>
                 ))}

@@ -20,7 +20,7 @@ export default async function Boards({ params }: { params: Promise<{ ws: string 
             <li key={b.id}>
               <Link
                 href={`/w/${ws}/b/${b.slug}`}
-                className="flex h-full min-h-28 flex-col justify-between gap-3 rounded-lg border bg-background p-4 shadow-xs transition hover:border-primary/50 hover:shadow-sm"
+                className="flex h-full min-h-28 flex-col justify-between gap-3 rounded-lg border bg-background p-4 transition hover:border-primary/50"
               >
                 <span className="flex items-center gap-2 font-medium">
                   <span className="flex size-8 items-center justify-center rounded-md bg-primary/10 text-primary">

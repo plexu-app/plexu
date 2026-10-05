@@ -73,7 +73,7 @@ export function BuscaRelacao({
         />
       </div>
       {aberto && (
-        <ul role="listbox" className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-background shadow-lg">
+        <ul role="listbox" className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-background">
           {itens.length === 0 && <li className="px-3 py-2 text-sm text-muted-foreground">Nada encontrado</li>}
           {itens.map((i) => (
             <li key={i.id} role="option" aria-selected={false}>
