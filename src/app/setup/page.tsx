@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { FormAuth } from "@/components/form-auth";
-import { Marca } from "@/components/marca";
+import { Logo } from "@/components/marca";
+import { AlternarTema } from "@/components/tema";
 import { Card, CardContent } from "@/components/ui/misc";
 import { criarPrimeiroAcesso } from "@/app/auth-actions";
 import { haUsuarios } from "@/server/consultas";
@@ -10,11 +11,12 @@ export const dynamic = "force-dynamic";
 export default async function Setup() {
   if (await haUsuarios()) redirect("/login");
   return (
-    <main className="flex min-h-screen items-center justify-center bg-muted p-6">
+    <main className="relative flex min-h-screen items-center justify-center bg-bg p-6">
+      <AlternarTema className="absolute right-4 top-4" />
       <Card className="w-full max-w-md">
         <CardContent className="flex flex-col gap-6 p-6">
-          <div className="flex items-center gap-2">
-            <Marca />
+          <div className="flex flex-col gap-3">
+            <Logo altura={40} />
             <div>
               <h1 className="text-lg font-semibold">Primeiro acesso</h1>
               <p className="text-sm text-muted-foreground">Crie o workspace e a conta de administrador (owner).</p>
