@@ -68,7 +68,8 @@ export async function atualizarFase(a: Alvo, faseId: string, dados: { nome?: str
     const f = await faseDoBoard(tx, a, faseId);
     const nome = dados.nome?.trim();
     if (dados.nome !== undefined && !nome) throw new ErroConfig("nome da fase obrigatório");
-    if (dados.cor && !/^#[0-9a-f]{6}$/i.test(dados.cor)) throw new ErroConfig("cor inválida (use #rrggbb)");
+    // Cor de fase: token do design (f1..f5) ou #rrggbb.
+    if (dados.cor && !/^(#[0-9a-f]{6}|f[1-5])$/i.test(dados.cor)) throw new ErroConfig("cor inválida (use f1..f5 ou #rrggbb)");
     const novo = {
       name: nome ?? f.name,
       isTerminal: dados.terminal ?? f.isTerminal,
