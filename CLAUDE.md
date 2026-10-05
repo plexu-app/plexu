@@ -13,6 +13,7 @@ Leia `docs/` antes de qualquer mudança:
 - `docs/ARQUITETURA.md`: invariantes e decisões do `src/core`.
 - `docs/schema.sql`: modelo completo (a migração em `src/db/migrations` é o subconjunto do MVP).
 - `docs/EXPRESSOES.md`: linguagem de regras, condições e fórmulas.
+- `docs/DESIGN.md`: tokens, tema claro/escuro e regras visuais (referência: `docs/design/plexu-mockups.html`). Nenhuma cor literal nem sombra em componente (`pnpm lint` confere).
 
 ## Regras
 
