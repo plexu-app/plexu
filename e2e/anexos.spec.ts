@@ -55,8 +55,8 @@ test("contrato com anexo obrigatório: upload, remover, criar, baixar e anexar p
   // Anexar mais um pelo formulário da fase e salvar
   await noCard.locator('input[type="file"]').setInputFiles({ name: "anexo-assinado.pdf", mimeType: "application/pdf", buffer: PDF });
   await expect(noCard.locator('[data-anexo="anexo-assinado.pdf"]')).toBeVisible();
-  await page.getByTestId("coluna-atual").getByRole("button", { name: "Salvar campos" }).click();
-  await expect(page.getByText("Campos salvos")).toBeVisible();
+  // Salvamento automático do campo de anexo
+  await expect(page.getByTestId("coluna-atual").locator('[data-campo="Minuta do contrato"]')).toHaveAttribute("data-salvamento", "salvo");
   await page.reload();
   await expect(page.getByTestId("coluna-atual").locator('[data-campo-anexos="Minuta do contrato"] [data-anexo]')).toHaveCount(2);
 

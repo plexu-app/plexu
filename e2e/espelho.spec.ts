@@ -64,8 +64,8 @@ test("espelho editável: modal em linguagem de usuário, motivo quando não edit
   // Edita no contrato → grava no fornecedor
   const salvar = async (valor: string) => {
     await espelho.getByRole("textbox").fill(valor);
-    await atual.getByRole("button", { name: "Salvar campos" }).click();
-    await expect(page.getByText("Campos salvos")).toBeVisible();
+    await espelho.getByRole("textbox").press("Tab");
+    await expect(espelho).toHaveAttribute("data-salvamento", "salvo");
   };
   await salvar(CNPJ_NOVO);
   await page.goto("/w/demo/b/fornecedores");

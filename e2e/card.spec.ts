@@ -62,9 +62,17 @@ test("card em 3 colunas: relações no formulário, inversas em Relacionados, fa
   await parcelas.getByLabel("Valor", { exact: true }).fill("700");
   await parcelas.getByRole("button", { name: "Adicionar" }).click();
   await expect(parcelas.locator("[data-linha]")).toHaveCount(1);
-  await atual.locator('[data-campo="CNPJ"]').getByRole("textbox").fill("11.222.333/0001-81");
-  await atual.getByRole("button", { name: "Salvar campos" }).click();
-  await expect(page.getByText("Campos salvos")).toBeVisible();
+  // Salvamento automático: sem botão; erro mantém o valor com a mensagem; corrigir salva sozinho
+  await expect(atual.getByRole("button", { name: "Salvar campos" })).toHaveCount(0);
+  const cnpj = atual.locator('[data-campo="CNPJ"]');
+  await cnpj.getByRole("textbox").fill("11.222.333/0001-00");
+  await cnpj.getByRole("textbox").press("Tab");
+  await expect(cnpj).toHaveAttribute("data-salvamento", "erro");
+  await expect(cnpj.locator("[data-erro-campo]")).toContainText(/CNPJ/i);
+  await expect(cnpj.getByRole("textbox")).toHaveValue("11.222.333/0001-00");
+  await cnpj.getByRole("textbox").fill("11.222.333/0001-81");
+  await expect(cnpj).toHaveAttribute("data-salvamento", "salvo"); // depois de 500 ms sem digitar
+  await expect(cnpj.locator("[data-erro-campo]")).toHaveCount(0);
 
   // Mover: bloqueado com o motivo até medir a parcela
   const vigente = lateral.locator('[data-mover="Vigente"]');
