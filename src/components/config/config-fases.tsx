@@ -119,7 +119,7 @@ function CoresFase({
           disabled={desabilitado}
           onClick={() => escolher(cor)}
           className={cn("size-4 rounded-full ring-offset-1", atual === cor && "ring-2 ring-foreground/60")}
-          style={{ backgroundColor: cor }}
+          style={{ backgroundColor: corDaFase(cor, 0) }}
         />
       ))}
       <button

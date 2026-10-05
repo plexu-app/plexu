@@ -3,7 +3,7 @@
 // execução e reexecutar; criar uma ação com mini-form e executá-la no card. Arquiva tudo no fim.
 import { expect, test, type Page } from "@playwright/test";
 import postgres from "postgres";
-import { anexarMinuta } from "./apoio";
+import { anexarComprovante } from "./apoio";
 
 const EMAIL = process.env.PLEXU_SEED_EMAIL ?? "demo@plexu.dev";
 const SENHA = process.env.PLEXU_SEED_SENHA ?? "plexu-demo-2026";
@@ -25,7 +25,7 @@ test("automação criada pela UI dispara ao criar card; teste com card; execuç�
   const sufixo = Date.now().toString(36);
   const nomeAuto = `Comentar ao criar ${sufixo}`;
   const nomeAcao = `Registrar revisão ${sufixo}`;
-  const objeto = `Contrato automação ${sufixo}`;
+  const objeto = `Pedido automação ${sufixo}`;
   try {
     await fluxo(page, { sufixo, nomeAuto, nomeAcao, objeto });
   } finally {
@@ -39,21 +39,21 @@ test("automação criada pela UI dispara ao criar card; teste com card; execuç�
 
 async function fluxo(page: Page, { sufixo, nomeAuto, nomeAcao, objeto }: { sufixo: string; nomeAuto: string; nomeAcao: string; objeto: string }) {
 
-  // 1. Nova automação: card criado → comentário com o objeto, publicada
-  await page.goto("/w/demo/b/contratos/settings?aba=automacoes");
+  // 1. Nova automação: card criado → comentário com a referência, publicada
+  await page.goto("/w/demo/b/pedidos/settings?aba=automacoes");
   await page.getByRole("button", { name: "Nova automação" }).click();
   const editor = page.getByRole("dialog");
   await editor.getByLabel("Nome da automação").fill(nomeAuto);
   await editor.getByLabel("Ambiente").selectOption({ label: "Publicada" });
   await expect(editor.getByLabel("Gatilho")).toHaveValue("card_created");
   await editor.getByLabel("Adicionar passo").selectOption({ label: "Comentar no card" });
-  await editor.getByLabel("Comentário (passo 1)").fill(`Automação ${sufixo}: {{ card.objeto }}`);
-  // Alvo do passo: com "filhos via Parcelas", os campos oferecidos são os do board das parcelas
+  await editor.getByLabel("Comentário (passo 1)").fill(`Automação ${sufixo}: {{ card.referencia }}`);
+  // Alvo do passo: com "filhos via Itens", os campos oferecidos são os do board dos itens
   await editor.getByLabel("Adicionar passo").selectOption({ label: "Preencher campo" });
   await expect(editor.getByLabel("Card alvo (passo 2)")).toHaveValue("self");
-  await expect(editor.getByLabel("Campo (passo 2)").locator("option", { hasText: "Objeto" })).toHaveCount(1);
-  await editor.getByLabel("Card alvo (passo 2)").selectOption({ label: "Filhos via Parcelas (Parcelas)" });
-  await expect(editor.getByLabel("Campo (passo 2)").locator("option", { hasText: "Objeto" })).toHaveCount(0);
+  await expect(editor.getByLabel("Campo (passo 2)").locator("option", { hasText: "Referência" })).toHaveCount(1);
+  await editor.getByLabel("Card alvo (passo 2)").selectOption({ label: "Filhos via Itens (Itens)" });
+  await expect(editor.getByLabel("Campo (passo 2)").locator("option", { hasText: "Referência" })).toHaveCount(0);
   await expect(editor.getByLabel("Campo (passo 2)").locator("option", { hasText: "Valor" })).toHaveCount(1);
   await editor.getByRole("button", { name: "Remover passo 2" }).click();
   await editor.getByRole("button", { name: "Salvar automação" }).click();
@@ -76,13 +76,13 @@ async function fluxo(page: Page, { sufixo, nomeAuto, nomeAcao, objeto }: { sufix
   await page.keyboard.press("Escape");
 
   // 3. Criar um card: o worker despacha o evento e a automação comenta
-  await page.goto("/w/demo/b/contratos");
-  await page.getByRole("button", { name: "Novo card", exact: true }).click();
-  const novo = page.getByRole("dialog", { name: "Novo card" });
-  await novo.getByLabel("Objeto").fill(objeto);
-  await novo.getByLabel("Contratante").fill("Construtora Automação");
-  await anexarMinuta(novo);
-  await novo.getByRole("button", { name: "Criar card" }).click();
+  await page.goto("/w/demo/b/pedidos");
+  await page.getByRole("button", { name: "Novo cartão", exact: true }).click();
+  const novo = page.getByRole("dialog", { name: "Novo cartão" });
+  await novo.getByLabel("Referência").fill(objeto);
+  await novo.getByLabel("Contato").fill("Compras Automação");
+  await anexarComprovante(novo);
+  await novo.getByRole("button", { name: "Criar cartão" }).click();
   await page.waitForURL(/\/c\/[0-9a-f-]{36}$/);
   const urlCard = page.url();
   await expect(async () => {
@@ -92,7 +92,7 @@ async function fluxo(page: Page, { sufixo, nomeAuto, nomeAcao, objeto }: { sufix
   }).toPass({ timeout: 60_000 });
 
   // 4. Execuções: a do card aparece com sucesso; reexecutar
-  await page.goto("/w/demo/b/contratos/settings?aba=execucoes");
+  await page.goto("/w/demo/b/pedidos/settings?aba=execucoes");
   await page.getByLabel("Filtrar por automação ou ação").selectOption({ label: nomeAuto });
   const doCard = page.locator("tr[data-execucao]").filter({ has: page.locator(`a[href$="/c/${urlCard.split("/c/")[1]}"]`) });
   const execucao = doCard;
@@ -105,7 +105,7 @@ async function fluxo(page: Page, { sufixo, nomeAuto, nomeAcao, objeto }: { sufix
   await expect(doCard).toHaveCount(2);
 
   // 5. Ação com mini-form: botão no card
-  await page.goto("/w/demo/b/contratos/settings?aba=acoes");
+  await page.goto("/w/demo/b/pedidos/settings?aba=acoes");
   await page.getByRole("button", { name: "Nova ação" }).click();
   const editorAcao = page.getByRole("dialog");
   await editorAcao.getByLabel("Nome da ação").fill(nomeAcao);
@@ -128,10 +128,10 @@ async function fluxo(page: Page, { sufixo, nomeAuto, nomeAcao, objeto }: { sufix
   await expect(page.getByText("Revisão: tudo certo")).toBeVisible();
 
   // Limpeza: arquiva a automação e a ação
-  await page.goto("/w/demo/b/contratos/settings?aba=automacoes");
+  await page.goto("/w/demo/b/pedidos/settings?aba=automacoes");
   await page.locator(`[data-automacao="${nomeAuto}"]`).getByRole("button", { name: `Arquivar ${nomeAuto}` }).click();
   await expect(page.getByText("Automação arquivada")).toBeVisible();
-  await page.goto("/w/demo/b/contratos/settings?aba=acoes");
+  await page.goto("/w/demo/b/pedidos/settings?aba=acoes");
   await page.locator(`[data-acao-config="${nomeAcao}"]`).getByRole("button", { name: `Arquivar ${nomeAcao}` }).click();
   await expect(page.getByText("Ação arquivada")).toBeVisible();
 }

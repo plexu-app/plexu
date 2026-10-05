@@ -206,7 +206,7 @@ export function ConfigCampos(ctx: ContextoCampos) {
               </GrupoFase>
             ))}
           </Table>
-          <DragOverlay>{emArraste ? <div className="rounded-md border bg-background px-3 py-1.5 text-sm font-medium shadow-md">{emArraste.name}</div> : null}</DragOverlay>
+          <DragOverlay>{emArraste ? <div className="rounded-md border bg-background px-3 py-1.5 text-sm font-medium">{emArraste.name}</div> : null}</DragOverlay>
         </DndContext>
       </CardContent>
       <Dialog open={editando !== null} onOpenChange={(v) => !v && setEditando(null)}>
@@ -1065,7 +1065,7 @@ function SeletorFases({
           <span className="text-xs text-muted-foreground">todas as fases</span>
         )}
       </summary>
-      <div className="absolute z-20 mt-1 flex w-48 flex-col gap-1.5 rounded-md border bg-background p-2 shadow-md" role="group" aria-label={`Fases de ${nome}`}>
+      <div className="absolute z-20 mt-1 flex w-48 flex-col gap-1.5 rounded-md border bg-background p-2" role="group" aria-label={`Fases de ${nome}`}>
         {fases.map((f) => (
           <label key={f.id} className="flex items-center gap-2 text-sm">
             <input

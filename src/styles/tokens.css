@@ -1,0 +1,58 @@
+/*
+ * Tokens do Plexu (docs/DESIGN.md). Único lugar com cores literais: componentes usam var(--token) ou as
+ * classes do Tailwind mapeadas em src/app/globals.css (@theme). Valores copiados de
+ * docs/design/plexu-mockups.html (:root e :root[data-theme=dark]).
+ *
+ * Tema: atributo data-theme no <html> ("light" | "dark"), aplicado por script no <head> antes da
+ * pintura (src/app/layout.tsx). Sem data-theme (JS desligado), segue o sistema.
+ */
+:root {
+  --bg: #f4f3ef; --paper: #fbfaf7; --ink: #15171c; --ink-2: #4b4f58; --ink-3: #858a95;
+  --line: #dcdad3; --line-2: #ebe9e3; --accent: #3b5bff; --accent-ink: #fff; --accent-soft: #e9edff;
+  --ok: #1f7a4d; --ok-soft: #e3f3ea; --warn: #9a5b00; --warn-soft: #fff1dc; --err: #b42318; --err-soft: #fde8e6;
+  --f1: #3b5bff; --f2: #0f9d8a; --f3: #c2410c; --f4: #7c3aed; --f5: #6b7280;
+  --r: 4px;
+  /* Fontes carregadas por next/font (variáveis --font-archivo / --font-plex-mono em <html>). */
+  --font: var(--font-archivo), "Archivo", sans-serif;
+  --mono: var(--font-plex-mono), "IBM Plex Mono", monospace;
+
+  /* Derivados (não estão no mockup): texto sobre --err e sobre cores de fase, véu dos modais. */
+  --err-ink: #fff;
+  --on-cor: #fff;
+  --scrim: rgb(21 23 28 / 0.32);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141518; --paper: #1b1c21; --ink: #ecebe6; --ink-2: #b3b2ab; --ink-3: #7c7d84; --line: #2d2f36; --line-2: #24262c; --accent: #7c93ff; --accent-ink: #0f1523; --accent-soft: #232a4a;
+    --ok-soft: #163026; --warn-soft: #3a2a10; --err-soft: #3b1a17;
+    --scrim: rgb(0 0 0 / 0.55);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #141518; --paper: #1b1c21; --ink: #ecebe6; --ink-2: #b3b2ab; --ink-3: #7c7d84; --line: #2d2f36; --line-2: #24262c; --accent: #7c93ff; --accent-ink: #0f1523; --accent-soft: #232a4a;
+  --ok-soft: #163026; --warn-soft: #3a2a10; --err-soft: #3b1a17;
+  --scrim: rgb(0 0 0 / 0.55);
+}
+
+/* Nomes legados (padrão shadcn/ui) apontando para os tokens: telas antigas seguem o tema sem reescrita. */
+:root {
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --muted: var(--bg);
+  --muted-foreground: var(--ink-2);
+  --border: var(--line);
+  --input: var(--line);
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-ink);
+  --primary-strong: var(--accent);
+  --secondary: var(--bg);
+  --secondary-foreground: var(--ink);
+  --destructive: var(--err);
+  --destructive-foreground: var(--err-ink);
+  --destructive-strong: var(--err);
+  --warning-strong: var(--warn);
+  --ring: var(--accent);
+  --radius: var(--r);
+}

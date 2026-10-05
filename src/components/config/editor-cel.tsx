@@ -45,12 +45,12 @@ export function EditorCel({
       )}
       {r?.ok && (
         <>
-          <p className="flex items-center gap-1 text-xs text-emerald-700" role="status">
+          <p className="flex items-center gap-1 text-xs text-ok" role="status">
             <CheckCircle2 className="size-3.5" /> Expressão válida
             {refsTexto(r.referencias) && <span className="text-muted-foreground">· usa {refsTexto(r.referencias)}</span>}
           </p>
           {r.avisos.map((a, i) => (
-            <p key={i} className="flex items-center gap-1 text-xs text-amber-700">
+            <p key={i} className="flex items-center gap-1 text-xs text-warn">
               <AlertTriangle className="size-3.5" /> {a.tipo}: {a.mensagem}
             </p>
           ))}

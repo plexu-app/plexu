@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AlternarTema } from "@/components/tema";
 import { RestaurarWorkspace } from "@/components/workspace/zona-de-perigo";
 import { exigirUsuario } from "@/server/acesso";
 import { workspacesArquivadosDoOwner, workspacesDoUsuario } from "@/server/consultas";
@@ -13,11 +14,14 @@ export default async function Arquivados() {
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-6 py-8">
       <header className="flex items-center justify-between gap-4">
         <h1 className="text-lg font-semibold">Workspaces arquivados</h1>
-        {ativos[0] && (
-          <Link href={`/w/${ativos[0].slug}`} className="text-sm text-muted-foreground hover:text-foreground">
-            Voltar
-          </Link>
-        )}
+        <span className="flex items-center gap-4">
+          {ativos[0] && (
+            <Link href={`/w/${ativos[0].slug}`} className="text-sm text-muted-foreground hover:text-foreground">
+              Voltar
+            </Link>
+          )}
+          <AlternarTema />
+        </span>
       </header>
       {lista.length === 0 && <p className="text-sm text-muted-foreground">Nenhum workspace arquivado.</p>}
       <ul className="flex flex-col divide-y rounded-lg border">

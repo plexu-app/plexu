@@ -35,7 +35,7 @@ export function NovoCard({
   onOpenChange,
   pessoas,
   hoje,
-  titulo = "Novo card",
+  titulo = "Novo cartão",
   descricao,
   enviar,
   aoCriar,
@@ -230,7 +230,7 @@ export function NovoCard({
                 Cancelar
               </Button>
               <Button type="submit" disabled={pendente || visiveis.length === 0}>
-                {pendente ? "Criando…" : "Criar card"}
+                {pendente ? "Criando…" : "Criar cartão"}
               </Button>
             </DialogFooter>
           </form>

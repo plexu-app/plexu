@@ -31,8 +31,8 @@ describe("montarCartoes", () => {
   it("formata campos, omite vazios e pega responsável do campo pessoa", () => {
     const [c] = montarCartoes([{ ...base, id: "a", props: { v: 1500, s: "", resp: "u1" } }], campos, opcoes);
     expect(c.campos).toEqual([
-      { nome: "Valor", texto: "R$ 1.500,00" },
-      { nome: "Responsável", texto: "Ana Lima" },
+      { nome: "Valor", texto: "R$ 1.500,00", tipo: "currency" },
+      { nome: "Responsável", texto: "Ana Lima", tipo: "person" },
     ]);
     expect(c.responsavel).toBe("Ana Lima");
     expect(c.prazo).toBeNull();
@@ -48,17 +48,32 @@ describe("montarCartoes", () => {
       opcoes,
     );
     expect(aberto.responsavel).toBe("Beto");
-    expect(aberto.prazo).toEqual({ texto: "01/09/2026", atrasado: true });
-    expect(feito.prazo).toEqual({ texto: "01/09/2026", atrasado: false });
+    expect(aberto.prazo).toEqual({ texto: "01/09/2026", atrasado: true, dias: -23 });
+    expect(feito.prazo).toEqual({ texto: "01/09/2026", atrasado: false, dias: -23 });
   });
 
   it("due_at do card tem prioridade sobre o campo de prazo", () => {
     const [c] = montarCartoes([{ ...base, id: "a", dueAt: new Date("2026-12-31T12:00:00Z"), props: { d: "2026-01-01" } }], campos, opcoes);
-    expect(c.prazo).toEqual({ texto: "31/12/2026", atrasado: false });
+    expect(c.prazo).toEqual({ texto: "31/12/2026", atrasado: false, dias: 98 });
+  });
+
+  it("tempo na fase: dias completos no fuso do produto; sem data de entrada, null", () => {
+    // 23/09 22h em São Paulo (24/09 01h UTC) conta como 23/09: 1 dia em 24/09
+    const [a, b] = montarCartoes(
+      [
+        { ...base, id: "a", props: {}, phaseEnteredAt: new Date("2026-09-24T01:00:00Z") },
+        { ...base, id: "b", props: {}, phaseEnteredAt: null },
+      ],
+      campos,
+      opcoes,
+    );
+    expect(a.naFase).toBe(1);
+    expect(b.naFase).toBeNull();
   });
 
   it("cor da fase: definida ou paleta pela posição", () => {
     expect(corDaFase("#123456", 0)).toBe("#123456");
-    expect(corDaFase(null, PALETA_FASES.length + 1)).toBe(PALETA_FASES[1]);
+    expect(corDaFase(null, PALETA_FASES.length + 1)).toBe("var(--f2)");
+    expect(corDaFase("f4", 0)).toBe("var(--f4)");
   });
 });

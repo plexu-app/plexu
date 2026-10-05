@@ -6,7 +6,7 @@ export function Input({ className, type, ...props }: React.ComponentProps<"input
     <input
       type={type}
       className={cn(
-        "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-80",
+        "flex h-8 w-full rounded border border-line bg-paper px-2.5 py-1 text-[13.5px] text-ink placeholder:text-ink-3 focus-visible:border-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:border-dashed disabled:bg-transparent disabled:text-ink-2",
         className,
       )}
       {...props}
@@ -18,7 +18,7 @@ export function Textarea({ className, ...props }: React.ComponentProps<"textarea
   return (
     <textarea
       className={cn(
-        "flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:bg-muted",
+        "flex min-h-20 w-full rounded border border-line bg-paper px-2.5 py-1.5 text-[13.5px] text-ink placeholder:text-ink-3 focus-visible:border-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:border-dashed disabled:bg-transparent disabled:text-ink-2",
         className,
       )}
       {...props}
@@ -30,7 +30,7 @@ export function NativeSelect({ className, ...props }: React.ComponentProps<"sele
   return (
     <select
       className={cn(
-        "flex h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:bg-muted",
+        "flex h-8 w-full rounded border border-line bg-paper px-2 py-1 text-[13.5px] text-ink focus-visible:border-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:border-dashed disabled:bg-transparent disabled:text-ink-2",
         className,
       )}
       {...props}
@@ -39,5 +39,5 @@ export function NativeSelect({ className, ...props }: React.ComponentProps<"sele
 }
 
 export function Label({ className, ...props }: React.ComponentProps<"label">) {
-  return <label className={cn("text-sm font-medium leading-none", className)} {...props} />;
+  return <label className={cn("text-xs leading-none text-ink-2", className)} {...props} />;
 }

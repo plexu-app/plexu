@@ -3,7 +3,7 @@
 // escrita em cards só pelo src/core; configuração só por src/server/config.
 import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
-import { addComment, CoreError, createCard, deleteCard, linkCards, moveCard, unlinkCards, updateFields } from "@/core";
+import { addComment, CoreError, createCard, deleteCard, linkCards, moveCard, movimentosDoCard, unlinkCards, updateFields } from "@/core";
 import { exigirBoard, exigirCard, exigirConfigurador, exigirMembro } from "@/server/acesso";
 import { criarFilho } from "@/server/cards";
 import { origemDoEspelho } from "@/server/espelhos";
@@ -287,4 +287,16 @@ export async function executarAcaoAction(ws: string, board: string, cardId: stri
   });
   revalidatePath(caminhoBoard(ws, board), "layout");
   return r.ok ? saida : r;
+}
+
+/** Para onde o card pode ir agora (mesma avaliação de moveCard): o kanban marca as fases bloqueadas ao arrastar. */
+export async function movimentosAction(ws: string, board: string, cardId: string): Promise<{ faseId: string; permitido: boolean; motivo?: string }[]> {
+  const ctx = await exigirMembro(ws);
+  const b = await exigirBoard(ctx, board);
+  await exigirCard(b, cardId);
+  try {
+    return await movimentosDoCard({ cardId, actor: ctx.actor });
+  } catch {
+    return []; // sem a informação, o arrasto segue e o core decide ao soltar
+  }
 }

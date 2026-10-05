@@ -17,7 +17,7 @@ test("sidebar recolhe pelo botão e pelo atalho, e lembra o estado", async ({ pa
 
   await nav.getByRole("button", { name: "Recolher barra lateral" }).click();
   await expect.poll(largura).toBeLessThan(80);
-  await expect(nav.getByRole("link", { name: "Contratos" })).toBeVisible(); // ícone com nome acessível
+  await expect(nav.getByRole("link", { name: "Pedidos" })).toBeVisible(); // ícone com nome acessível
 
   await page.reload();
   expect(await largura()).toBeLessThan(80);

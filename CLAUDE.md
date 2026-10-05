@@ -13,6 +13,7 @@ Leia `docs/` antes de qualquer mudança:
 - `docs/ARQUITETURA.md`: invariantes e decisões do `src/core`.
 - `docs/schema.sql`: modelo completo (a migração em `src/db/migrations` é o subconjunto do MVP).
 - `docs/EXPRESSOES.md`: linguagem de regras, condições e fórmulas.
+- `docs/DESIGN.md`: tokens, tema claro/escuro e regras visuais (referência: `docs/design/plexu-mockups.html`). Nenhuma cor literal nem sombra em componente (`pnpm lint` confere).
 
 ## Regras
 
@@ -25,6 +26,6 @@ Leia `docs/` antes de qualquer mudança:
 - **Três bancos, no mesmo Postgres (porta 5433), cada um com um só uso:**
   - `plexu`: demo do usuário (`docker compose`, `pnpm dev`, `pnpm db:seed`). Nunca é usado por testes, manuais ou automáticos.
   - `plexu_test`: vitest (`pnpm test`). Criado e migrado sozinho pelo setup global (`src/test/global-setup.ts`); `TEST_DATABASE_URL` sobrescreve.
-  - `plexu_e2e`: Playwright (`pnpm e2e`) e testes manuais no navegador. Preparar com `DATABASE_URL=postgres://plexu:plexu@localhost:5433/plexu_e2e pnpm db:migrate && pnpm db:seed` (o migrate cria o banco se faltar); `E2E_DATABASE_URL` sobrescreve. Servidor de teste em outra porta: `E2E_PORT=3200 pnpm e2e`, ou `next dev -p 3100` com esse `DATABASE_URL`. Para zerar: `drop database plexu_e2e` e preparar de novo.
+  - `plexu_e2e`: Playwright (`pnpm e2e`) e testes manuais no navegador. Preparar com `DATABASE_URL=postgres://plexu:plexu@localhost:5433/plexu_e2e pnpm db:migrate && pnpm db:seed` (o migrate cria o banco se faltar); `E2E_DATABASE_URL` sobrescreve. Servidor de teste em outra porta: `E2E_PORT=3200 pnpm e2e`, ou `next dev -p 3100` com esse `DATABASE_URL`. Para zerar só o demo: `pnpm db:seed --reset` com esse `DATABASE_URL`; para zerar tudo: `drop database plexu_e2e` e preparar de novo.
 - **Problema de segurança não vira pendência.** Ao apontar um (segredo exposto, permissão frouxa, dado vazando), corrija no mesmo PR ou abra um PR imediatamente. Nunca apenas liste como pendência no resumo.
 - **Não encerre o turno esperando CI.** Enquanto o CI roda, avance em outra tarefa (próximo item, revisão do diff) e consulte o status com `gh pr checks <n>` a cada tarefa concluída. Nada de loops `until`/`sleep` em segundo plano. Pare só quando o PR estiver mesclado ou houver uma decisão pendente do usuário.

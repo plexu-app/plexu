@@ -1,33 +1,42 @@
 @import "tailwindcss";
+@import "../styles/tokens.css";
+
+/* docs/ (mockups, markdown) não é código do app: fora da varredura de classes, e editá-lo não recompila o CSS. */
+@source not "../../docs";
 
 /* Sidebar recolhida (atributo no <html>, aplicado antes da pintura; ver components/sidebar.tsx). */
 @custom-variant recolhida (html[data-sidebar="recolhida"] &);
+/* Tema escuro pelo atributo data-theme (docs/DESIGN.md), não pela media query. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/* Tokens no padrão shadcn/ui (Tailwind v4). Sem tema elaborado no MVP. */
-:root {
-  --plexu-ink: #1f2a44;
-  --plexu-accent: #3b5bff;
-  --radius: 0.5rem;
-  --background: #ffffff;
-  --foreground: #1f2a44;
-  --muted: #f4f5f8;
-  --muted-foreground: #5b6478;
-  --border: #e3e6ee;
-  --input: #d6dae4;
-  --primary: #3b5bff;
-  --primary-foreground: #ffffff;
-  /* Texto pequeno (12px) sobre fundos tingidos: contraste AA (≥ 4,5:1) */
-  --primary-strong: #2e46d1;
-  --destructive-strong: #b42318;
-  --warning-strong: #b54708;
-  --secondary: #eef1f7;
-  --secondary-foreground: #1f2a44;
-  --destructive: #d92d20;
-  --destructive-foreground: #ffffff;
-  --ring: #3b5bff;
-}
-
+/* Classes do Tailwind mapeadas para os tokens (src/styles/tokens.css). */
 @theme inline {
+  --color-bg: var(--bg);
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-err: var(--err);
+  --color-err-soft: var(--err-soft);
+  --color-err-ink: var(--err-ink);
+  --color-on-cor: var(--on-cor);
+  --color-f1: var(--f1);
+  --color-f2: var(--f2);
+  --color-f3: var(--f3);
+  --color-f4: var(--f4);
+  --color-f5: var(--f5);
+  --color-scrim: var(--scrim);
+
+  /* Legados (shadcn/ui) → tokens */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
@@ -44,13 +53,27 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 2px);
-  --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 2px);
+
+  /* Raio único de 4px (rounded, rounded-sm/md/lg) */
+  --radius: var(--r);
+  --radius-sm: var(--r);
+  --radius-md: var(--r);
+  --radius-lg: var(--r);
+
+  --font-sans: var(--font);
+  --font-mono: var(--mono);
 }
 
 @layer base {
-  * { border-color: var(--border); }
-  /* Base 14px; IDs e badges usam 12px (text-xs). */
-  body { background: var(--background); color: var(--foreground); font-size: 0.875rem; line-height: 1.25rem; }
+  * { border-color: var(--line); }
+  html { color-scheme: light; }
+  html[data-theme="dark"] { color-scheme: dark; }
+  /* Corpo 14px/1.5 em Archivo sobre o fundo de papel (mockup: body). */
+  body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+  ::selection { background: var(--accent-soft); }
+}
+
+@layer utilities {
+  /* Rótulo do arquivo técnico: mono 11px caixa-alta (mockup: .mono). */
+  .rotulo { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
 }

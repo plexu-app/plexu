@@ -72,6 +72,7 @@ export interface CardResumo {
   updatedAt: Date;
   assignees: string[];
   dueAt: Date | null;
+  phaseEnteredAt: Date | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -232,6 +233,7 @@ const colunasResumo = {
   updatedAt: cards.updatedAt,
   assignees: cards.assignees,
   dueAt: cards.dueAt,
+  phaseEnteredAt: cards.phaseEnteredAt,
 };
 
 export async function cardsDoBoard(boardId: string, limite = 2000): Promise<CardResumo[]> {

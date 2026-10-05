@@ -1,4 +1,4 @@
-import { Marca } from "@/components/marca";
+import { Logo, Marca } from "@/components/marca";
 import { Sidebar, SCRIPT_SIDEBAR } from "@/components/sidebar";
 import { exigirMembro, podeConfigurar } from "@/server/acesso";
 import { boardsDoWorkspace, workspacesArquivadosDoOwner, workspacesDoUsuario } from "@/server/consultas";
@@ -27,9 +27,10 @@ export default async function LayoutWorkspace({ children, params }: { children: 
         workspaces={workspaces.map((w) => ({ slug: w.slug, name: w.name }))}
         arquivados={arquivados.length}
         configuraWorkspace={podeConfigurar(ctx)}
-        marca={<Marca tamanho={22} />}
+        marca={<Marca tamanho={24} />}
+        logo={<Logo altura={40} />}
       />
-      <div className="flex min-h-screen flex-col pl-60 transition-[padding] recolhida:pl-14">{children}</div>
+      <div className="flex min-h-screen flex-col pl-[232px] transition-[padding] recolhida:pl-14">{children}</div>
     </div>
   );
 }

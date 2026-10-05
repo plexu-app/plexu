@@ -25,7 +25,7 @@ test("capturas das telas", async ({ page }) => {
   await page.waitForURL(/\/w\/demo$/);
   await capturar(page, "1-boards");
 
-  await page.goto("/w/demo/b/contratos");
+  await page.goto("/w/demo/b/pedidos");
   await page.locator("[data-card]").first().waitFor();
   await capturar(page, "2-kanban");
 
@@ -33,21 +33,22 @@ test("capturas das telas", async ({ page }) => {
   await page.getByTestId("painel-card").waitFor();
   await capturar(page, "3-card");
 
-  await page.goto("/w/demo/b/contratos/table");
+  await page.goto("/w/demo/b/pedidos/table");
   await page.locator("[data-linha]").first().waitFor();
   await capturar(page, "4-tabela");
 
-  await page.goto("/w/demo/b/contratos/settings?aba=regras");
+  await page.goto("/w/demo/b/pedidos/settings?aba=regras");
   await page.getByRole("button", { name: "Nova regra" }).click();
   const dlg = page.getByRole("dialog");
   await dlg.getByLabel("Tipo da regra").selectOption("can_enter");
-  await dlg.getByLabel("Fase da regra").selectOption({ label: "Vigente" });
+  await dlg.getByLabel("Fases da regra").selectOption({ label: "fases escolhidas…" });
+  await dlg.getByRole("group", { name: "Fases em que a regra vale" }).getByLabel("Enviado").check();
   await dlg.getByRole("button", { name: "Condição", exact: true }).click();
   await dlg.getByRole("button", { name: "Condição", exact: true }).click();
   const linhas = dlg.locator("[data-condicao]");
-  await linhas.nth(0).getByLabel("Campo").selectOption({ label: "Objeto" });
+  await linhas.nth(0).getByLabel("Campo").selectOption({ label: "Referência" });
   await linhas.nth(0).getByLabel("Operador").selectOption({ label: "está preenchido" });
-  await linhas.nth(1).getByLabel("Campo").selectOption({ label: "Valor global" });
+  await linhas.nth(1).getByLabel("Campo").selectOption({ label: "Valor total" });
   await linhas.nth(1).getByLabel("Operador").selectOption({ label: "maior que" });
   await linhas.nth(1).getByLabel("Valor").fill("10000");
   await capturar(page, "5-configuracoes-regra");
