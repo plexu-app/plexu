@@ -24,7 +24,7 @@ test("pedido com anexo obrigatório: upload, remover, criar, baixar e anexar pel
   // Obrigatório: sem arquivo, não cria
   await modal.getByRole("button", { name: "Criar cartão" }).click();
   await expect(comprovante.locator("[data-erro-campo]")).toHaveText("Obrigatório nesta fase");
-  await expect(comprovante.getByText("PDF ou Word da comprovante.")).toBeVisible();
+  await expect(comprovante.getByText("PDF ou Word do pedido.")).toBeVisible();
 
   // Tipo não aceito é recusado antes do envio
   await arquivo.setInputFiles({ name: "foto.png", mimeType: "image/png", buffer: Buffer.from("png") });
