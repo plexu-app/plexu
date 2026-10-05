@@ -255,7 +255,8 @@ create table rules (
   id uuid primary key default gen_random_uuid(),
   board_id uuid not null references boards on delete cascade,
   kind text not null check (kind in ('can_enter','can_leave','can_back','can_edit','can_delete','can_create')),
-  phase_id uuid references phases,                -- null = qualquer fase
+  phase_ids uuid[],                               -- fases em que vale; null = todas
+  from_phase_id uuid references phases,           -- "a partir da fase X" (X e seguintes, por posição); exclusivo com phase_ids
   field_id uuid references fields,                -- para can_edit
   expr text not null,                             -- CEL. Contexto exposto (nomes PT-BR na UI → CEL):
                                                   --   card.<slug>            valor de campo do card atual (props+computed)

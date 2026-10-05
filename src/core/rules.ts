@@ -183,14 +183,27 @@ async function usuarioDe(op: Op): Promise<Registro | null> {
 type Kind = "can_create" | "can_edit" | "can_enter" | "can_leave" | "can_back" | "can_delete";
 type RegraRow = typeof rules.$inferSelect;
 
-async function lerRegras(op: Op, boardId: string, kind: Kind, phaseId: string | null, fieldId?: string): Promise<RegraRow[]> {
-  const fase = phaseId ? or(isNull(rules.phaseId), eq(rules.phaseId, phaseId)) : isNull(rules.phaseId);
+/**
+ * A regra vale na fase? Sem fases definidas: todas. phase_ids: só nelas. from_phase_id: a partir dela,
+ * por posição (fases criadas depois entram sozinhas). Card sem fase só vê regras de todas as fases.
+ */
+export function regraVale(q: Pick<Quadro, "fasePorId">, r: { phaseIds: string[] | null; fromPhaseId: string | null }, phaseId: string | null): boolean {
+  if (!r.phaseIds?.length && !r.fromPhaseId) return true;
+  if (!phaseId) return false;
+  if (r.phaseIds?.length) return r.phaseIds.includes(phaseId);
+  const de = q.fasePorId.get(r.fromPhaseId!);
+  const f = q.fasePorId.get(phaseId);
+  return !!de && !!f && f.position >= de.position;
+}
+
+async function lerRegras(op: Op, q: Quadro, kind: Kind, phaseId: string | null, fieldId?: string): Promise<RegraRow[]> {
   const campo = fieldId ? or(isNull(rules.fieldId), eq(rules.fieldId, fieldId)) : undefined;
-  return op.tx
+  const todas = await op.tx
     .select()
     .from(rules)
-    .where(and(eq(rules.boardId, boardId), eq(rules.kind, kind), eq(rules.enabled, true), fase, campo))
+    .where(and(eq(rules.boardId, q.id), eq(rules.kind, kind), eq(rules.enabled, true), campo))
     .orderBy(asc(rules.position), asc(rules.id));
+  return todas.filter((r) => regraVale(q, r, phaseId));
 }
 
 /** Avalia regras em ordem; a primeira falsa (ou com erro) bloqueia. */
@@ -280,7 +293,7 @@ const fasesAte = (q: Quadro, fase: Fase, inclusive: boolean) =>
 export async function canCreate(op: Op, alvo: AlvoContexto & { faseId: string | null }): Promise<ResultadoRegra> {
   const { quadro, faseId } = alvo;
   const a = { ...alvo, fase: faseId, faseDestino: faseId };
-  const r = await avaliarRegras(op, await lerRegras(op, quadro.id, "can_create", faseId), a, "can_create");
+  const r = await avaliarRegras(op, await lerRegras(op, quadro, "can_create", faseId), a, "can_create");
   if (!r.ok) return r;
   const fase = faseId ? quadro.fasePorId.get(faseId)! : null;
   const obrig = await verificarObrigatorios(op, a, fase ? fasesAte(quadro, fase, true) : [null]);
@@ -306,7 +319,7 @@ export async function canEdit(op: Op, alvo: AlvoContexto & { campo: Campo }): Pr
       campos: [campo.id],
     });
   }
-  const regras = await lerRegras(op, quadro.id, "can_edit", card.phaseId, campo.id);
+  const regras = await lerRegras(op, quadro, "can_edit", card.phaseId, campo.id);
   return avaliarRegras(op, regras, { ...alvo, ligacoes }, "can_edit");
 }
 
@@ -326,7 +339,7 @@ export async function canEnter(
   alvo: AlvoContexto & { origem: string | null; destino: string },
 ): Promise<ResultadoRegra> {
   const a = { ...alvo, faseOrigem: alvo.origem, faseDestino: alvo.destino };
-  return avaliarRegras(op, await lerRegras(op, alvo.quadro.id, "can_enter", alvo.destino), a, "can_enter");
+  return avaliarRegras(op, await lerRegras(op, alvo.quadro, "can_enter", alvo.destino), a, "can_enter");
 }
 
 /** can_leave: obrigatórios da fase de origem e de TODAS as anteriores + regras can_leave. */
@@ -341,7 +354,7 @@ export async function canLeave(
     const obrig = await verificarObrigatorios(op, a, fasesAte(quadro, origem, true));
     if (!obrig.ok) return obrig;
   }
-  return avaliarRegras(op, await lerRegras(op, quadro.id, "can_leave", alvo.origem), a, "can_leave");
+  return avaliarRegras(op, await lerRegras(op, quadro, "can_leave", alvo.origem), a, "can_leave");
 }
 
 /**
@@ -353,7 +366,7 @@ export async function canBack(
   alvo: AlvoContexto & { origem: string; destino: string },
 ): Promise<ResultadoRegra> {
   const a = { ...alvo, faseOrigem: alvo.origem, faseDestino: alvo.destino };
-  const regras = await lerRegras(op, alvo.quadro.id, "can_back", alvo.origem);
+  const regras = await lerRegras(op, alvo.quadro, "can_back", alvo.origem);
   const avisos: string[] = [];
   for (const regra of regras) {
     const r = await avaliarRegras(op, [regra], a, "can_back");
@@ -370,7 +383,7 @@ export async function canBack(
 }
 
 export async function canDelete(op: Op, alvo: AlvoContexto): Promise<ResultadoRegra> {
-  return avaliarRegras(op, await lerRegras(op, alvo.quadro.id, "can_delete", alvo.card.phaseId), alvo, "can_delete");
+  return avaliarRegras(op, await lerRegras(op, alvo.quadro, "can_delete", alvo.card.phaseId), alvo, "can_delete");
 }
 
 /**

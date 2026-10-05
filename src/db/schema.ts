@@ -162,7 +162,10 @@ export const rules = pgTable("rules", {
   id: id(),
   boardId: uuid("board_id").notNull().references(() => boards.id, { onDelete: "cascade" }),
   kind: text("kind", { enum: ["can_enter", "can_leave", "can_back", "can_edit", "can_delete", "can_create"] }).notNull(),
-  phaseId: uuid("phase_id").references(() => phases.id, { onDelete: "cascade" }),
+  /** Fases em que a regra vale (null = todas). */
+  phaseIds: uuid("phase_ids").array(),
+  /** "A partir da fase X": X e as seguintes por posição (exclusivo com phaseIds). */
+  fromPhaseId: uuid("from_phase_id").references(() => phases.id, { onDelete: "cascade" }),
   fieldId: uuid("field_id").references(() => fields.id, { onDelete: "cascade" }),
   expr: text("expr").notNull(),
   message: text("message"),

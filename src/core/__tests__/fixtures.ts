@@ -85,11 +85,15 @@ export async function criarRegra(r: {
   boardId: string;
   kind: "can_enter" | "can_leave" | "can_back" | "can_edit" | "can_delete" | "can_create";
   expr: string;
+  /** Atalho para uma fase só (phaseIds: [phaseId]). */
   phaseId?: string;
+  phaseIds?: string[];
+  fromPhaseId?: string;
   fieldId?: string;
   message?: string;
   onFail?: Record<string, unknown>;
 }): Promise<string> {
-  const [row] = await db.insert(rules).values(r).returning();
+  const { phaseId, ...resto } = r;
+  const [row] = await db.insert(rules).values({ ...resto, ...(phaseId ? { phaseIds: [phaseId] } : {}) }).returning();
   return row.id;
 }
