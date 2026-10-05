@@ -51,11 +51,24 @@ O mesmo Postgres guarda três bancos, cada um com um só uso. Testes nunca tocam
 
 Na primeira visita a `http://localhost:3000`, com o banco sem usuários, a tela **Primeiro acesso** cria o workspace e a conta owner. `APP_SECRET` (32+ caracteres; `openssl rand -hex 32`) assina o cookie de sessão. Em produção, ausente, curto ou com o valor de exemplo, o servidor recusa iniciar e diz por quê.
 
-Dados de demonstração (caso de aceitação do MVP: Contratos → Parcelas, com sequence `CT-{n}/{ano}`, relação exclusiva, rollups e a regra que exige parcelas medidas para sair de Elaboração):
+Dados de demonstração (workspace `demo`, uma loja que vende e entrega). O seed cria:
+
+- os fluxos Pedidos (Novo → Em separação → Enviado → Entregue) e Entregas (Agendada → Em rota → Entregue → Falhou);
+- as bases Itens, Clientes e Produtos;
+- sequence `PD-{n}`, relações, rollups, uma regra (o pedido só vai para Enviado com todos os itens separados) e uma automação publicada.
 
 ```bash
-pnpm db:seed              # idempotente; login demo@plexu.dev / plexu-demo-2026
+pnpm db:seed              # cria o demo se não existir; login demo@plexu.dev / plexu-demo-2026
+pnpm db:seed --reset      # apaga o workspace demo e cria de novo, com os dados do seed atual
 ```
+
+O `--reset` exclui o workspace `demo` do banco em `DATABASE_URL` pelo mesmo caminho da exclusão na UI:
+
+- boards, cards, ligações, comentários, anexos (inclusive os arquivos) e automações saem;
+- os eventos ficam, marcados como de workspace excluído;
+- a linha do workspace fica como lápide (`demo~excluido-…`).
+
+Use quando o demo estiver sujo de testes ou o seed tiver mudado. Os outros workspaces e os usuários não são tocados.
 
 Checagens (obrigatórias antes de PR; os testes de integração usam o banco `plexu_test`):
 

@@ -4,11 +4,12 @@
 // relação N:1 com busca, sub-tabela 1:N, rollups, campo condicional, anexo obrigatório, regra em várias
 // fases, automação simples e campos por fase. Idempotente: se o workspace demo já existir, não faz nada.
 // Cards de exemplo passam pelo core, com datas relativas a hoje.
-//   pnpm db:seed
-import { eq } from "drizzle-orm";
+//   pnpm db:seed            cria o demo se não existir
+//   pnpm db:seed --reset    exclui o demo (como a exclusão pela UI) e cria de novo
+import { and, eq } from "drizzle-orm";
 import { db } from "./index";
 import { attachments, automations, boards, cards, fieldPhaseSettings, fields, phases, rules, users, workspaceMembers, workspaces } from "./schema";
-import { createCard, emitirEventoConfig, garantirIndiceExclusivo, moveCard, updateFields, type Actor } from "../core";
+import { createCard, emitirEventoConfig, excluirWorkspace, garantirIndiceExclusivo, moveCard, updateFields, type Actor } from "../core";
 import { hashSenha } from "../server/auth/senha";
 import { ArmazenamentoDisco, diretorioAnexos, novaChave } from "../server/anexos/disco";
 
@@ -32,12 +33,35 @@ function cnpj(base: string): string {
   return `${s.slice(0, 2)}.${s.slice(2, 5)}.${s.slice(5, 8)}/${s.slice(8, 12)}-${s.slice(12)}`;
 }
 
+/**
+ * --reset: exclui o workspace demo pelo core, o mesmo caminho da exclusão pela UI. Boards, cards,
+ * ligações, comentários, anexos e automações saem; os eventos ficam (append-only), marcados como de
+ * workspace excluído, e o slug "demo" é liberado. Depois do commit, apaga os arquivos dos anexos.
+ */
+async function excluirDemo(ws: { id: string; name: string }) {
+  const [dono] = await db
+    .select({ id: workspaceMembers.userId })
+    .from(workspaceMembers)
+    .where(and(eq(workspaceMembers.workspaceId, ws.id), eq(workspaceMembers.orgRole, "owner")))
+    .limit(1);
+  const donoId = dono?.id;
+  if (!donoId) throw new Error("seed --reset: o workspace 'demo' não tem owner; não há quem o exclua.");
+  const r = await excluirWorkspace({ workspaceId: ws.id, actor: { type: "user", id: donoId }, confirmacao: ws.name });
+  const armazenamento = new ArmazenamentoDisco(diretorioAnexos());
+  let falhas = 0;
+  for (const chave of r.chavesAnexos) await armazenamento.remover(chave).catch(() => falhas++);
+  const { boards: b, cards: c, anexos } = r.removidos;
+  console.log(`seed: workspace 'demo' excluído (${b} boards, ${c} cards, ${anexos} anexos${falhas ? `; ${falhas} arquivo(s) não removido(s) do disco` : ""}).`);
+}
+
 async function main() {
-  const [existe] = await db.select({ id: workspaces.id }).from(workspaces).where(eq(workspaces.slug, "demo"));
-  if (existe) {
-    console.log("seed: workspace 'demo' já existe; nada a fazer.");
+  const reset = process.argv.includes("--reset");
+  const [existe] = await db.select({ id: workspaces.id, name: workspaces.name }).from(workspaces).where(eq(workspaces.slug, "demo"));
+  if (existe && !reset) {
+    console.log("seed: workspace 'demo' já existe; nada a fazer (--reset exclui e cria de novo).");
     return;
   }
+  if (existe) await excluirDemo(existe);
 
   const ids = await db.transaction(async (tx) => {
     let [u] = await tx.select().from(users).where(eq(users.email, EMAIL));
