@@ -145,6 +145,7 @@ export async function PainelCard({ ws, board, cardId, voltarPara }: { ws: string
                 board={b.slug}
                 cardId={card.id}
                 campo={{ id: campo.id, name: campo.name }}
+                colunasConfig={(campo.config.relation as { table_fields?: { field: string; editable?: boolean }[] } | undefined)?.table_fields}
                 lado="origem"
                 boardFilho={{ id: ob.id, slug: ob.slug, name: ob.name, campos: ob.campos, titleFieldId: ob.titleFieldId }}
                 linhas={r.cards}
@@ -210,6 +211,7 @@ export async function PainelCard({ ws, board, cardId, voltarPara }: { ws: string
             cardId={card.id}
             campo={{ id: r.campo.id, name: String((r.campo.config.relation as { inverse_name?: string })?.inverse_name ?? ob.name) }}
             lado="destino"
+            colunasConfig={(r.campo.config.relation as { table_fields?: { field: string; editable?: boolean }[] } | undefined)?.table_fields}
             boardFilho={{ id: ob.id, slug: ob.slug, name: ob.name, campos: ob.campos, titleFieldId: ob.titleFieldId }}
             linhas={r.cards}
             pessoas={pessoas}

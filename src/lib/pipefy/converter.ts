@@ -2,6 +2,7 @@
 // (src/lib/template.ts) e produz os dados do relatório de conversão. Puro e genérico: nenhuma
 // regra depende de nomes de pipes/campos; só de tipos, ids e padrões (séries numeradas, fórmulas,
 // "move de volta se"). Mapeamentos em docs/TEMPLATE.md (seção Pipefy).
+import { TIPOS_COLUNA_EDITAVEL } from "../config-campos";
 import { normalizarAccept } from "../anexos";
 import { slugCampo, slugify } from "../slug";
 import { VERSAO_TEMPLATE, type AutomacaoConvertida, type AutomacaoPendente, type BoardTemplate, type CampoTemplate, type RegraTemplate, type Template } from "../template";
@@ -164,6 +165,13 @@ interface BoardConv {
 }
 
 /** Key livre: base, base_2, base_3… sem passar de max caracteres (keys de campo: 40). */
+/** Colunas padrão da sub-tabela (as mesmas que o Plexu mostra sem configuração). */
+const colunasPadrao = (t: BoardTemplate): { field: string; editable?: boolean }[] =>
+  t.fields
+    .filter((f) => f.type !== "relation" && f.key !== t.title_field)
+    .slice(0, 6)
+    .map((f) => ({ field: f.key }));
+
 const unico = (base: string, usados: Set<string>, sep = "_", max = 40) => {
   let k = base.slice(0, max);
   for (let i = 2; usados.has(k); i++) {
@@ -255,6 +263,7 @@ class Conversor {
     for (const b of this.boards) this.automacoes(b);
     for (const b of this.boards) this.regrasDeFase(b);
     for (const b of this.boards) this.finalizar(b);
+    for (const b of this.boards) this.limparColunas(b);
     const rel = this.boards.map((b) => b.rel);
     const soma = (f: (r: RelatorioBoard) => number) => rel.reduce((n, r) => n + f(r), 0);
     return {
@@ -515,6 +524,21 @@ class Conversor {
       });
   }
 
+  /** Colunas da sub-tabela que deixaram de valer (campo virou calculado ou relação): saem ou perdem a edição. */
+  limparColunas(b: BoardConv) {
+    for (const f of b.tpl.fields) {
+      const cols = f.relation?.table_fields;
+      if (!cols) continue;
+      const alvo = this.boards.find((x) => x.key === f.relation!.board);
+      const validas = cols
+        .map((c) => ({ c, tipo: alvo?.tpl.fields.find((x) => x.key === c.field)?.type }))
+        .filter(({ tipo }) => tipo && tipo !== "relation")
+        .map(({ c, tipo }) => (c.editable && !TIPOS_COLUNA_EDITAVEL.has(tipo!) ? { field: c.field } : c));
+      if (validas.length) f.relation!.table_fields = validas;
+      else delete f.relation!.table_fields;
+    }
+  }
+
   /** Série de campos: um campo no board filho (reaproveita o destino de uma automação de cópia). */
   resolverSeriesDeCampo(b: BoardConv) {
     for (const s of b.series.filter((x) => x.tipo === "campo")) {
@@ -547,6 +571,17 @@ class Conversor {
         s.alvo.rel.campos.push({ origem: `${s.nome} (série de ${b.tpl.name})`, tipoOrigem: tipoPf, fase: null, destino, tipoDestino: c.type, nota: "campo criado a partir de série numerada do board pai" });
       }
       s.campoFilho = destino;
+      // O campo da série vira coluna da sub-tabela do pai (sim/não e data editáveis direto na tabela).
+      const rel = b.tpl.fields.find((f) => f.key === s.relKey && f.type === "relation");
+      const filho = s.alvo.tpl.fields.find((f) => f.key === destino);
+      if (rel?.relation && filho) {
+        const cols = rel.relation.table_fields ?? colunasPadrao(s.alvo.tpl);
+        const editavel = filho.type === "boolean" || filho.type === "date";
+        const atual = cols.find((c) => c.field === filho.key);
+        if (atual) atual.editable = atual.editable || editavel || undefined;
+        else cols.push({ field: filho.key, ...(editavel ? { editable: true } : {}) });
+        rel.relation.table_fields = cols.map((c) => (c.editable ? c : { field: c.field }));
+      }
       b.rel.naoRepresentado.push({
         item: `série ${s.nome} (${s.membros.length} campos)`,
         motivo: `representada por 1 campo em cada card de ${s.alvo.tpl.name} (${destino ?? "?"}), não por campos numerados no pai`,
@@ -814,15 +849,8 @@ class Conversor {
     for (const x of bloqueios) porExpr.set(x.ok, [...(porExpr.get(x.ok) ?? []), x]);
     for (const [ok, xs] of porExpr) {
       const fases = [...new Set(xs.map((x) => x.fase))];
-      const regra: RegraTemplate =
-        fases.length === 1
-          ? { kind: "can_enter", phase: fases[0], expr: ok, message: xs[0].mensagem }
-          : {
-              kind: "can_enter",
-              phase: null,
-              expr: `!(fase_destino in [${fases.map((f) => JSON.stringify(b.tpl.phases.find((p) => p.key === f)!.name)).join(", ")}]) || ${ok}`,
-              message: xs[0].mensagem,
-            };
+      // Uma regra só, valendo em todas as fases onde o bloqueio existia.
+      const regra: RegraTemplate = { kind: "can_enter", phases: fases, expr: ok, message: xs[0].mensagem };
       b.tpl.rules!.push(regra);
       b.rel.regras++;
       const ref = `regra ${b.tpl.rules!.length}`;
@@ -1196,20 +1224,23 @@ class Conversor {
       const destinos = (f.pf.cards_can_be_moved_to_phases ?? []).map((x) => nomes.get(x.id)).filter((x): x is string => !!x);
       const outras = b.fases.filter((x) => x !== f).length;
       if (!f.pf.cards_can_be_moved_to_phases || destinos.length >= outras) continue;
+      // Vale ao entrar nas fases que não são destino permitido: bloqueia quem vem de F.
+      const proibidas = b.fases.filter((x) => x !== f && !destinos.includes(x.pf.name)).map((x) => x.key);
+      if (!proibidas.length) continue;
       b.tpl.rules!.push({
         kind: "can_enter",
-        phase: null,
-        expr: `fase_origem != ${JSON.stringify(f.pf.name)} || fase_destino in [${destinos.map((d) => JSON.stringify(d)).join(", ")}]`,
+        phases: proibidas,
+        expr: `fase_origem != ${JSON.stringify(f.pf.name)}`,
         message: `Destinos permitidos a partir de ${f.pf.name}: ${destinos.join(", ") || "nenhum"}`,
       });
       b.rel.regrasConfig++;
     }
-    const terminais = b.fases.filter((f) => f.pf.done).map((f) => JSON.stringify(f.pf.name));
+    const terminais = b.fases.filter((f) => f.pf.done).map((f) => f.key);
     for (const cc of b.campos) {
       const rel = cc.serie?.tipo === "conexao" ? cc.serie.relKey : cc.campo?.type === "relation" ? cc.campo.key : "";
       if (!rel || !cc.pf.childMustExistToFinishParent || !terminais.length) continue;
       if (b.tpl.rules!.some((r) => r.expr.includes(`filhos(${JSON.stringify(rel)}).contar() > 0`))) continue;
-      b.tpl.rules!.push({ kind: "can_enter", phase: null, expr: `!(fase_destino in [${terminais.join(", ")}]) || filhos(${JSON.stringify(rel)}).contar() > 0`, message: `${cc.pf.label}: é preciso ao menos um card ligado para finalizar` });
+      b.tpl.rules!.push({ kind: "can_enter", phases: terminais, expr: `filhos(${JSON.stringify(rel)}).contar() > 0`, message: `${cc.pf.label}: é preciso ao menos um card ligado para finalizar` });
       b.rel.regrasConfig++;
     }
     for (const cc of b.campos) {

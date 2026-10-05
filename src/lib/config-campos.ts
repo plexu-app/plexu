@@ -37,6 +37,38 @@ export interface ContextoConfig {
   campos: { id: string; slug: string; type: string }[];
   /** fases ativas do board, para fill_phases (ausente: fases não são aceitas) */
   fases?: Set<string>;
+  /** campos de cada board (id e tipo), para validar as colunas da sub-tabela (ausente: só o formato) */
+  camposPorBoard?: Map<string, { id: string; type: string }[]>;
+}
+
+/** Tipos editáveis direto na sub-tabela (célula com checkbox, data, número ou seleção). */
+export const TIPOS_COLUNA_EDITAVEL = new Set(["boolean", "date", "number", "currency", "select"]);
+
+export interface ColunaSubTabela {
+  field: string;
+  editable: boolean;
+}
+
+/** relation.table_fields: colunas do board filho na sub-tabela, com edição inline opcional. */
+function normalizarColunas(bruto: unknown, alvo: string, ctx: ContextoConfig): ColunaSubTabela[] {
+  if (!Array.isArray(bruto)) return [];
+  const campos = ctx.camposPorBoard?.get(alvo);
+  const vistos = new Set<string>();
+  const saida: ColunaSubTabela[] = [];
+  for (const x of bruto.slice(0, 20)) {
+    const o = (x ?? {}) as Record<string, unknown>;
+    const field = texto(o.field);
+    if (!field || vistos.has(field)) continue;
+    vistos.add(field);
+    const editable = o.editable === true;
+    if (campos) {
+      const c = campos.find((f) => f.id === field);
+      if (!c || c.type === "relation") throw new ErroConfigCampo("coluna da sub-tabela não é um campo do board de destino");
+      if (editable && !TIPOS_COLUNA_EDITAVEL.has(c.type)) throw new ErroConfigCampo("edição na tabela só para sim/não, data, número, moeda e seleção");
+    }
+    saida.push({ field, editable });
+  }
+  return saida;
 }
 
 const texto = (v: unknown) => (typeof v === "string" ? v.trim() : "");
@@ -98,6 +130,10 @@ function normalizarPorTipo(tipo: string, bruto: unknown, ctx: ContextoConfig): R
           ...(texto(r.inverse_name) ? { inverse_name: texto(r.inverse_name) } : {}),
           ...(texto(r.filter_expr) ? { filter_expr: texto(r.filter_expr) } : {}),
           ...(lock.length ? { lock_fields_while_linked: lock } : {}),
+          ...(() => {
+            const colunas = normalizarColunas(r.table_fields, alvo, ctx);
+            return colunas.length ? { table_fields: colunas } : {};
+          })(),
         },
       };
     }

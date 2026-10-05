@@ -5,7 +5,10 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { Calculator, Plus, Unlink } from "lucide-react";
 import { toast } from "sonner";
 import { criarFilhoAction, criarFilhoComCamposAction, desligarAction, editarRelacionadoAction } from "@/app/w/[ws]/actions";
-import { CampoInput } from "@/components/card/campo-input";
+import { CampoInput, opcoesDe } from "@/components/card/campo-input";
+import { Input, NativeSelect } from "@/components/ui/input";
+import { TIPOS_COLUNA_EDITAVEL } from "@/lib/config-campos";
+import { valorDoForm } from "@/lib/form-campos";
 import { BuscaRelacao } from "@/components/card/seletor-relacao";
 import { NovoCard, type FaseNovoCard } from "@/components/novo-card";
 import { Button } from "@/components/ui/button";
@@ -38,6 +41,7 @@ export function SubTabela({
   board,
   cardId,
   campo,
+  colunasConfig,
   lado,
   boardFilho,
   linhas,
@@ -51,6 +55,8 @@ export function SubTabela({
   board: string;
   cardId: string;
   campo: { id: string; name: string };
+  /** relation.table_fields: colunas do board filho e quais se editam na tabela (ausente: as 6 primeiras). */
+  colunasConfig?: { field: string; editable?: boolean }[];
   lado: "origem" | "destino";
   boardFilho: { id: string; slug: string; name: string; campos: CampoFilho[]; titleFieldId: string | null };
   linhas: Linha[];
@@ -67,7 +73,13 @@ export function SubTabela({
   const [pendente, iniciar] = useTransition();
   const formNovo = useRef<HTMLFormElement>(null);
   const mapaPessoas = new Map(Object.entries(pessoas));
-  const colunas = colunasSubTabela(boardFilho.campos, boardFilho.titleFieldId);
+  // Colunas configuradas no campo de relação; sem configuração, as padrão (sim/não editável, como antes).
+  const colunas: (CampoFilho & { editavelNaTabela: boolean })[] = colunasConfig?.length
+    ? colunasConfig.flatMap((col) => {
+        const c = boardFilho.campos.find((x) => x.id === col.field && x.type !== "relation");
+        return c ? [{ ...c, editavelNaTabela: col.editable === true && TIPOS_COLUNA_EDITAVEL.has(c.type) }] : [];
+      })
+    : colunasSubTabela(boardFilho.campos, boardFilho.titleFieldId).map((c) => ({ ...c, editavelNaTabela: c.type === "boolean" }));
   const titulo = boardFilho.campos.find((c) => c.id === boardFilho.titleFieldId);
   const criaveis = [...(titulo && TIPOS_CRIACAO.has(titulo.type) ? [titulo] : []), ...colunas.filter((c) => TIPOS_CRIACAO.has(c.type))];
   // "Adicionar" rápido só se os campos dele cobrem todos os obrigatórios do filho (a relação com o pai
@@ -120,13 +132,20 @@ export function SubTabela({
                 {colunas.map((c) => {
                   const v = valorDoCard(c, l);
                   return (
-                    <Td key={c.id}>
-                      {c.type === "boolean" ? (
+                    <Td key={c.id} data-celula={c.name}>
+                      {c.editavelNaTabela && c.type === "boolean" ? (
                         <CheckboxRemoto
                           rotulo={`${c.name} de ${tituloOu(l.title, l.id)}`}
                           valor={v === true}
                           salvar={(novo) => editarRelacionadoAction(ws, board, cardId, l.id, c.id, novo)}
                           erro={`Não foi possível alterar ${c.name}`}
+                        />
+                      ) : c.editavelNaTabela ? (
+                        <CelulaEditavel
+                          campo={c}
+                          valor={v}
+                          rotulo={`${c.name} de ${tituloOu(l.title, l.id)}`}
+                          salvar={(novo) => editarRelacionadoAction(ws, board, cardId, l.id, c.id, novo)}
                         />
                       ) : (
                         formatarValor(c, v, mapaPessoas)
@@ -218,6 +237,62 @@ export function SubTabela({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Célula editável (data, número, moeda, seleção): grava ao mudar (data/seleção) ou ao sair do campo
+ * (número). Se o core recusar, volta ao valor anterior e mostra o motivo.
+ */
+function CelulaEditavel({
+  campo,
+  valor,
+  rotulo,
+  salvar,
+}: {
+  campo: CampoFilho;
+  valor: unknown;
+  rotulo: string;
+  salvar: (novo: string | null) => Promise<{ ok: boolean; motivo?: string }>;
+}) {
+  const router = useRouter();
+  const [pendente, iniciar] = useTransition();
+  const inicial = valor === null || valor === undefined ? "" : String(valor);
+  const enviar = (el: HTMLInputElement | HTMLSelectElement) => {
+    const bruto = el.value.trim();
+    if (bruto === inicial) return;
+    const novo = valorDoForm(campo.type, [bruto]) as string | null;
+    iniciar(async () => {
+      const r = await salvar(novo);
+      if (r.ok) router.refresh();
+      else {
+        el.value = inicial;
+        toast.error(`Não foi possível alterar ${campo.name}`, { description: r.motivo });
+      }
+    });
+  };
+  const comum = { "aria-label": rotulo, disabled: pendente, className: "h-8 min-w-28" };
+  if (campo.type === "select")
+    return (
+      <NativeSelect key={inicial} {...comum} defaultValue={inicial} onChange={(e) => enviar(e.currentTarget)}>
+        <option value="">—</option>
+        {opcoesDe(campo.config).map((o) => (
+          <option key={o.valor} value={o.valor}>
+            {o.rotulo}
+          </option>
+        ))}
+      </NativeSelect>
+    );
+  if (campo.type === "date") return <Input key={inicial} {...comum} type="date" defaultValue={inicial} onChange={(e) => enviar(e.currentTarget)} />;
+  return (
+    <Input
+      key={inicial}
+      {...comum}
+      inputMode="decimal"
+      defaultValue={inicial}
+      onBlur={(e) => enviar(e.currentTarget)}
+      onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+    />
   );
 }
 

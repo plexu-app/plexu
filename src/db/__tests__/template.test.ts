@@ -32,7 +32,7 @@ const TEMPLATE: Template = {
         { key: "total", name: "Total", type: "rollup", rollup: { via: "itens", agg: "sum", expr: "valor", format: "currency" } },
         { key: "resumo", name: "Resumo", type: "dynamic_text", dynamic_text: { template: "{numero}: {objeto}" } },
       ],
-      rules: [{ kind: "can_leave", phase: "abertura", expr: 'filhos("itens").contar() > 0', message: "Inclua ao menos um item." }],
+      rules: [{ kind: "can_leave", phases: ["abertura"], expr: 'filhos("itens").contar() > 0', message: "Inclua ao menos um item." }],
       automations: [
         { key: "p1", name: "Avisar comprador", trigger: { event: "card_created" }, actions: [{ type: "send_email_template" }], status: "pendente" },
         {
@@ -157,6 +157,22 @@ async function exportarFases(wsSlug: string) {
   const t = await exportarTemplate(wsSlug, ["pedidos", "itens"]);
   return new Map(t.boards[0].phases.map((p) => [p.key, fs.find((f) => f.name === p.name)!.id]));
 }
+
+describe("regras: formato antigo", () => {
+  it("phase (uma fase) ainda é aceito e vira phase_ids", async () => {
+    const antigo: Template = JSON.parse(JSON.stringify(TEMPLATE));
+    antigo.boards[0].rules = [{ kind: "can_leave", phase: "abertura", expr: "true" }];
+    expect(validarTemplate(antigo)).toEqual([]);
+    const r = await importarTemplate(antigo, { workspace: `Tpl ${randomUUID().slice(0, 6)}` });
+    const { rules, phases } = await import("../schema");
+    const pedidos = r.boards.find((b) => b.key === "pedidos")!.id;
+    const [regra] = await db.select().from(rules).where(eq(rules.boardId, pedidos));
+    const [abertura] = (await db.select().from(phases).where(eq(phases.boardId, pedidos))).filter((f) => f.name === "Abertura");
+    expect(regra).toMatchObject({ phaseIds: [abertura.id], fromPhaseId: null });
+    const ex = await exportarTemplate(r.workspace.slug, ["pedidos"]);
+    expect(ex.boards[0].rules).toEqual([{ kind: "can_leave", phases: ["abertura"], expr: "true", message: null }]);
+  });
+});
 
 describe("automações convertidas", () => {
   it("importa com ids resolvidos e o motor as reconhece; referência inexistente é recusada", async () => {
