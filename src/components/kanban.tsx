@@ -115,7 +115,9 @@ export function Kanban({ ws, board, colunas, cards }: { ws: string; board: strin
           />
         ))}
       </div>
-      <DragOverlay>{emArraste ? <CartaoVisual card={emArraste} flutuando /> : null}</DragOverlay>
+      <DragOverlay>
+        {emArraste ? <CartaoVisual card={emArraste} flutuando concluido={colunas.find((c) => c.id === emArraste.phaseId)?.terminal} /> : null}
+      </DragOverlay>
     </DndContext>
   );
 }

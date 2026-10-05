@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "../styles/tokens.css";
 
+/* docs/ (mockups, markdown) não é código do app: fora da varredura de classes, e editá-lo não recompila o CSS. */
+@source not "../../docs";
+
 /* Sidebar recolhida (atributo no <html>, aplicado antes da pintura; ver components/sidebar.tsx). */
 @custom-variant recolhida (html[data-sidebar="recolhida"] &);
 /* Tema escuro pelo atributo data-theme (docs/DESIGN.md), não pela media query. */
