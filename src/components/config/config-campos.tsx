@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input, Label, NativeSelect, Textarea } from "@/components/ui/input";
 import { Badge, Card, CardContent, CardHeader, CardTitle, Table, TBody, Td, Th, THead, Tr } from "@/components/ui/misc";
-import { TIPOS_CAMPO } from "@/lib/config-campos";
+import { TIPOS_CAMPO, TIPOS_COLUNA_EDITAVEL } from "@/lib/config-campos";
 import { fasesDoCampo, obrigatorioOculto } from "@/lib/fases-preenchimento";
 import { exprDoValorFixo, lerValorInicial, TIPOS_DATA, TIPOS_NUMERO, type ModoInicial } from "@/lib/valor-inicial";
 import { cn } from "@/lib/utils";
@@ -50,6 +50,8 @@ export interface ContextoCampos {
     campos?: { slug: string; name: string; type: string }[];
   }[];
   campos: CampoConfig[];
+  /** campos de cada board (sem relações): colunas da sub-tabela de uma relação 1:N */
+  camposPorBoard?: Record<string, { id: string; name: string; type: string }[]>;
   /** campos disponíveis no construtor de condições */
   condicoes: CampoCondicao[];
 }
@@ -739,6 +741,7 @@ function ConfigPorTipo({
               </div>
             </div>
           )}
+          <ColunasSubTabela ctx={ctx} r={r} upd={upd} />
         </div>
       );
     }
@@ -939,6 +942,55 @@ const TRI: { valor: string; rotulo: string }[] = [
 ];
 const deTri = (v: Tri) => (v === null ? "" : v ? "1" : "0");
 const paraTri = (s: string): Tri => (s === "" ? null : s === "1");
+
+/**
+ * Colunas da sub-tabela de uma relação 1:N (relation.table_fields): quais campos do board filho aparecem
+ * e quais se editam direto na tabela. Board filho: o de destino, ou este quando "o card escolhido é o pai".
+ */
+function ColunasSubTabela({ ctx, r, upd }: { ctx: ContextoCampos; r: Record<string, unknown>; upd: (k: string, v: unknown) => void }) {
+  const umPorUm = r.cardinality === "one" && r.is_parent !== true;
+  const boardFilho = r.is_parent === true ? null : String(r.target_board ?? "");
+  const campos = (boardFilho ? ctx.camposPorBoard?.[boardFilho] : ctx.campos.filter((c) => c.type !== "relation")) ?? [];
+  if (umPorUm || !campos.length) return null;
+  const cols = (Array.isArray(r.table_fields) ? r.table_fields : []) as { field: string; editable?: boolean }[];
+  const set = (n: { field: string; editable?: boolean }[]) => upd("table_fields", n);
+  return (
+    <fieldset className="col-span-2 rounded-md border px-3 py-2" aria-label="Colunas na sub-tabela">
+      <legend className="px-1 text-sm font-medium">Colunas na sub-tabela</legend>
+      <p className="mb-2 text-xs text-muted-foreground">{cols.length ? "Na ordem da lista." : "Sem escolha: os 6 primeiros campos."} “Editar na tabela” vale para sim/não, data, número, moeda e seleção.</p>
+      <ul className="grid grid-cols-2 gap-x-4 gap-y-1">
+        {campos.map((c) => {
+          const col = cols.find((x) => x.field === c.id);
+          const editavelTipo = TIPOS_COLUNA_EDITAVEL.has(c.type);
+          return (
+            <li key={c.id} className="flex items-center gap-3 text-sm" data-coluna={c.name}>
+              <label className="flex flex-1 items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  className="size-4"
+                  checked={!!col}
+                  onChange={(e) => set(e.target.checked ? [...cols, { field: c.id }] : cols.filter((x) => x.field !== c.id))}
+                />
+                {c.name}
+              </label>
+              <label className={cn("flex items-center gap-1 text-xs", !editavelTipo && "opacity-50")} title={editavelTipo ? undefined : "Este tipo de campo não se edita na tabela"}>
+                <input
+                  type="checkbox"
+                  className="size-3.5"
+                  aria-label={`Editar ${c.name} na tabela`}
+                  disabled={!col || !editavelTipo}
+                  checked={!!col?.editable}
+                  onChange={(e) => set(cols.map((x) => (x.field === c.id ? { field: x.field, ...(e.target.checked ? { editable: true } : {}) } : x)))}
+                />
+                editar na tabela
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    </fieldset>
+  );
+}
 
 function MatrizFases({ ctx, campo }: { ctx: ContextoCampos; campo: CampoConfig }) {
   const { pendente, executar } = useAcaoConfig();

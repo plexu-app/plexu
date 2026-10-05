@@ -128,7 +128,7 @@ async function main() {
       .values({
         boardId: bc.id,
         kind: "can_leave",
-        phaseId: fases["Elaboração"],
+        phaseIds: [fases["Elaboração"]],
         expr: 'filhos("parcelas").contar() > 0 && filhos("parcelas").todos(p, p.medida == true)',
         message: "Todas as parcelas precisam estar medidas (e deve haver ao menos uma).",
       })

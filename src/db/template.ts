@@ -55,6 +55,9 @@ function configDoCampo(
       is_parent: c.relation.is_parent === true,
       ...(c.relation.inverse_name ? { inverse_name: c.relation.inverse_name } : {}),
       ...(c.relation.filter ? { filter_expr: c.relation.filter } : {}),
+      ...(c.relation.table_fields?.length
+        ? { table_fields: c.relation.table_fields.map((t) => ({ field: ids.campos.get(`${c.relation!.board}.${t.field}`) ?? "", editable: t.editable === true })).filter((t) => t.field) }
+        : {}),
     };
   }
   if (c.sequence) {
@@ -152,6 +155,7 @@ export async function importarTemplate(t: Template, op: OpcoesImportacao): Promi
         relacoes,
         campos: b.fields.map((c) => ({ id: ids.campos.get(`${b.key}.${c.key}`)!, slug: c.key, type: c.type })),
         fases: new Set(b.phases.map((f) => ids.fases.get(`${b.key}.${f.key}`)!)),
+        camposPorBoard: new Map(t.boards.map((x) => [ids.boards.get(x.key)!, x.fields.map((c) => ({ id: ids.campos.get(`${x.key}.${c.key}`)!, type: c.type }))])),
       };
       for (const c of b.fields) {
         const fieldId = ids.campos.get(`${b.key}.${c.key}`)!;
@@ -192,7 +196,11 @@ export async function importarTemplate(t: Template, op: OpcoesImportacao): Promi
           .values({
             boardId,
             kind: r.kind,
-            phaseId: r.phase ? ids.fases.get(`${b.key}.${r.phase}`)! : null,
+            phaseIds: (() => {
+              const ks = r.phases?.length ? r.phases : r.phase ? [r.phase] : [];
+              return ks.length ? ks.map((k) => ids.fases.get(`${b.key}.${k}`)!) : null;
+            })(),
+            fromPhaseId: r.from_phase ? ids.fases.get(`${b.key}.${r.from_phase}`)! : null,
             fieldId: r.field ? ids.campos.get(`${b.key}.${r.field}`)! : null,
             expr: r.expr,
             message: r.message ?? null,
@@ -315,6 +323,9 @@ export async function exportarTemplate(wsSlug: string, boardSlugs: string[], nom
         ...(rel.is_parent ? { is_parent: true } : {}),
         ...(rel.inverse_name ? { inverse_name: String(rel.inverse_name) } : {}),
         ...(rel.filter_expr ? { filter: String(rel.filter_expr) } : {}),
+        ...(Array.isArray(rel.table_fields) && rel.table_fields.length
+          ? { table_fields: (rel.table_fields as { field: string; editable?: boolean }[]).map((t) => ({ field: refCampo.get(t.field)?.slug ?? t.field, ...(t.editable ? { editable: true } : {}) })) }
+          : {}),
       };
     }
     const seq = cfg.sequence as Config | undefined;
@@ -411,7 +422,8 @@ export async function exportarTemplate(wsSlug: string, boardSlugs: string[], nom
         .filter((r) => r.boardId === b.id)
         .map((r) => ({
           kind: r.kind,
-          phase: r.phaseId ? keyFase.get(r.phaseId) ?? null : null,
+          ...(r.phaseIds?.length ? { phases: r.phaseIds.map((id) => keyFase.get(id) ?? id) } : {}),
+          ...(r.fromPhaseId ? { from_phase: keyFase.get(r.fromPhaseId) ?? r.fromPhaseId } : {}),
           ...(r.fieldId ? { field: refCampo.get(r.fieldId)?.slug ?? null } : {}),
           expr: r.expr,
           message: r.message,

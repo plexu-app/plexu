@@ -99,6 +99,7 @@ export default async function Configuracoes({
             ajustes={d.ajustes.flatMap((a) => (a.fieldId && a.phaseId ? [{ ...a, fieldId: a.fieldId, phaseId: a.phaseId }] : []))}
             boards={d.boards}
             relacoesVia={relacoesVia}
+            camposPorBoard={Object.fromEntries(d.boards.map((x) => [x.id, d.camposWs.filter((c) => c.boardId === x.id && c.type !== "relation").map(({ id, name, type }) => ({ id, name, type }))]))}
             campos={b.campos}
             condicoes={condicoes}
           />
@@ -121,7 +122,7 @@ export default async function Configuracoes({
           fases={fases}
           campos={b.campos.map((c) => ({ id: c.id, name: c.name }))}
           condicoes={condicoes}
-          regras={d.regras.map((r) => ({ id: r.id, kind: r.kind, phaseId: r.phaseId, fieldId: r.fieldId, expr: r.expr, message: r.message, onFail: r.onFail, enabled: r.enabled }))}
+          regras={d.regras.map((r) => ({ id: r.id, kind: r.kind, phaseIds: r.phaseIds, fromPhaseId: r.fromPhaseId, fieldId: r.fieldId, expr: r.expr, message: r.message, onFail: r.onFail, enabled: r.enabled }))}
         />
       )}
       {(aba === "automacoes" || aba === "acoes") && (

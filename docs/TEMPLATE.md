@@ -34,13 +34,15 @@ pnpm template:import <arquivo.json> [--workspace "Nome"] [--membro email@exemplo
       ],
       "fields": [ /* ver abaixo */ ],
       "rules": [
-        { "kind": "can_leave", "phase": "abertura", "expr": "filhos(\"itens\").contar() > 0", "message": "Inclua ao menos um item." }
+        { "kind": "can_leave", "phases": ["abertura"], "expr": "filhos(\"itens\").contar() > 0", "message": "Inclua ao menos um item." }
       ],
       "automations": [ /* reservado: ver abaixo */ ]
     }
   ]
 }
 ```
+
+Regras: `kind`, `expr`, `message`, `field` (can_edit) e as fases em que valem: ausente = todas; `"phases": ["a", "b"]`; ou `"from_phase": "a"` (essa e as seguintes, inclusive fases criadas depois). O formato antigo `"phase": "a"` continua aceito na importação.
 
 Tudo é referenciado por `key`, nunca por UUID. A key de campo é o identificador nas expressões (`card.<key>`), então segue as regras de identificador CEL: minúsculas, dígitos e `_`, sem começar com dígito.
 
@@ -58,7 +60,7 @@ Tudo é referenciado por `key`, nunca por UUID. A key de campo é o identificado
 | `currency` | `{ "code": "BRL" }` |
 | `multiple` | `person` com várias pessoas |
 | `accept` | `attachment`: extensões/tipos aceitos, como o atributo accept do HTML (`".pdf,.docx,image/*"`); vazio aceita qualquer arquivo |
-| `relation` | `{ "board", "cardinality": "one"\|"many", "exclusive", "is_parent", "inverse_name", "filter" }`. `board` é a key de um board do template ou o slug de um board que já existe no workspace de destino |
+| `relation` | `{ "board", "cardinality": "one"\|"many", "exclusive", "is_parent", "inverse_name", "filter", "table_fields" }`. `board` é a key de um board do template ou o slug de um board que já existe no workspace de destino. `table_fields`: colunas da sub-tabela, `[{ "field": "<key no board filho>", "editable": true }]` (`editable` só para boolean, date, number, currency, select) |
 | `sequence` | `{ "pattern": "PC-{n}", "scope": "global"\|"year"\|"month"\|"day"\|"parent", "seed", "pad", "parent_field" }` |
 | `rollup` | `{ "via", "agg": "count"\|"sum"\|"avg"\|"min"\|"max", "expr", "filter", "format": "currency" }`. `via` é a key de uma relação deste board ou `"<board>.<campo>"` para uma relação de outro board que aponta para este |
 | `dynamic_text` | `{ "template": "{numero} · {card.global - card.pago}" }` |
@@ -134,15 +136,16 @@ Fases (ordem, final, destinos permitidos), campos (tipo, obrigatório, editável
 | título do pipe | `title_field`: o campo marcado como título; senão o primeiro texto obrigatório; senão o primeiro texto |
 | start form | campos da primeira fase |
 | fase "final" | `terminal` |
-| destinos permitidos restritos | regra `can_enter` com `fase_origem`/`fase_destino` |
-| conexão com "filho obrigatório para finalizar" | regra `can_enter` nas fases finais: `filhos(rel).contar() > 0` |
+| destinos permitidos restritos (de F só para D) | regra `can_enter` nas fases fora de D (`phases`), com `fase_origem != F` |
+| conexão com "filho obrigatório para finalizar" | regra `can_enter` com `phases` = fases finais: `filhos(rel).contar() > 0` |
+| série de campos (data, sim/não) alinhada a uma série de conexões | além do campo no filho, coluna da sub-tabela do pai (`relation.table_fields`), editável na tabela |
 | condicional de campo (mostrar/ocultar) | `visible` do campo alvo: mostrar quando = condição; ocultar quando = negação |
 | condição sobre conexão com uma base de apoio ("Categoria = registro X") | com a base exportada com `--registros`: `filhos("conexao").algum(r, r.titulo == "<título do registro>")` (vários registros → `in [...]`; diferente → negação; vazio/preenchido → `size(card.conexao)`); registro não exportado fica em "Não convertida" com o motivo |
 | série de conexões numeradas para o mesmo alvo ("Item 01..12") | **uma** relação 1:N (`many`) |
 | série de campos numerados alinhada a ela ("Aprovar item 01..12") | um campo em cada card filho; se uma automação copiava cada membro para um campo do filho, esse campo é reaproveitado e a cópia deixa de existir |
 | automação `run_a_formula` `SUM(%{item_NN.valor}...)` sobre a série | `rollup` `sum` pela relação (várias automações 1/12…12/12 → 1 rollup) |
 | `run_a_formula` entre campos do mesmo card (`SUBTRACT`, `SUM`, …) | `dynamic_text` com a expressão |
-| `move_single_card` ao entrar na fase P, se condição, de volta para fase anterior | regra `can_enter(P) := !(condição)`; a mesma condição em várias fases vira **uma** regra |
+| `move_single_card` ao entrar na fase P, se condição, de volta para fase anterior | regra `can_enter(P) := !(condição)`; a mesma condição em várias fases vira **uma** regra com `phases` = essas fases |
 | título do card = conexão | campo `lookup` (`ref`, `path: "titulo"`) pela conexão, usado como título |
 | `update_card_field` no filho da série copiando um campo simples do pai | o campo do filho vira `lookup` `ref` pela relação da série (a série de automações deixa de existir) |
 | automação que cabe no motor v1: gatilho `card_created`, `card_moved` (entrou na fase), `card_left_phase`, `field_updated` (campos simples) com ação `update_card_field` no próprio card (valor fixo, vazio ou cópia de um campo), `move_single_card`, `move_parent_card` (`move_card` com `target` pai pela conexão do board pai), `create_card`/`create_connected_card` (board do conjunto; conexão pela única relação entre os boards); `all_children_in_phase` + `move_parent_card` | `automations` com `status: "convertida"` (publicada se ativa no Pipefy; rascunho se inativa); a de filhos vai para o board pai |

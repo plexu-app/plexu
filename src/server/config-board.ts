@@ -1,7 +1,7 @@
 import "server-only";
 // Configuração de board: fases, campos, ajustes por fase e regras. Nunca toca em cards.
 // Toda mudança emite config.changed na mesma transação (decisão 13).
-import { and, asc, count, eq, isNull, max, ne, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, max, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { boards, cards, fieldPhaseSettings, fields, phases, rules } from "@/db/schema";
 import { emitirEventoConfig, garantirIndiceExclusivo, recalcularTitulos, type Actor, type Tx } from "@/core";
@@ -154,7 +154,10 @@ async function contextoConfig(tx: Tx, a: Alvo): Promise<ContextoConfig> {
     .select({ id: phases.id })
     .from(phases)
     .where(and(eq(phases.boardId, a.boardId), isNull(phases.archivedAt)));
-  return { boardId: a.boardId, boards: new Map(bs.map((b) => [b.id, b.name])), relacoes, campos, fases: new Set(fs.map((f) => f.id)) };
+  const todos = idsWs.size ? await tx.select({ id: fields.id, boardId: fields.boardId, type: fields.type }).from(fields).where(and(inArray(fields.boardId, [...idsWs]), isNull(fields.archivedAt))) : [];
+  const camposPorBoard = new Map<string, { id: string; type: string }[]>();
+  for (const f of todos) camposPorBoard.set(f.boardId, [...(camposPorBoard.get(f.boardId) ?? []), { id: f.id, type: f.type }]);
+  return { boardId: a.boardId, boards: new Map(bs.map((b) => [b.id, b.name])), relacoes, campos, fases: new Set(fs.map((f) => f.id)), camposPorBoard };
 }
 
 function prepararCampo(d: DadosCampo, ctx: ContextoConfig) {
@@ -338,7 +341,10 @@ export type TipoRegra = (typeof TIPOS_REGRA)[number];
 
 export interface DadosRegra {
   kind: string;
-  phaseId?: string | null;
+  /** Fases em que a regra vale ([] ou ausente = todas). */
+  phaseIds?: string[] | null;
+  /** "A partir da fase": essa e as seguintes (exclusivo com phaseIds). */
+  fromPhaseId?: string | null;
   fieldId?: string | null;
   expr: string;
   message?: string;
@@ -350,8 +356,10 @@ async function prepararRegra(tx: Tx, a: Alvo, d: DadosRegra) {
   if (!TIPOS_REGRA.includes(d.kind as TipoRegra)) throw new ErroConfig("tipo de regra inválido");
   const expr = validarExpr(d.expr, "expressão");
   if (!expr) throw new ErroConfig("expressão obrigatória");
-  const phaseId = d.phaseId || null;
-  if (phaseId) await faseDoBoard(tx, a, phaseId);
+  const phaseIds = [...new Set((Array.isArray(d.phaseIds) ? d.phaseIds : []).filter(Boolean))].slice(0, 100);
+  const fromPhaseId = d.fromPhaseId || null;
+  if (phaseIds.length && fromPhaseId) throw new ErroConfig("escolha fases específicas ou \"a partir da fase\", não os dois");
+  for (const id of [...phaseIds, ...(fromPhaseId ? [fromPhaseId] : [])]) await faseDoBoard(tx, a, id);
   const fieldId = d.kind === "can_edit" ? d.fieldId || null : null;
   if (fieldId) {
     const [f] = await tx.select({ id: fields.id }).from(fields).where(and(eq(fields.id, fieldId), eq(fields.boardId, a.boardId)));
@@ -359,7 +367,8 @@ async function prepararRegra(tx: Tx, a: Alvo, d: DadosRegra) {
   }
   return {
     kind: d.kind as TipoRegra,
-    phaseId,
+    phaseIds: phaseIds.length ? phaseIds : null,
+    fromPhaseId,
     fieldId,
     expr,
     message: d.message?.trim() || null,
@@ -428,7 +437,7 @@ export async function dadosConfiguracao(wsId: string, boardId: string) {
       ),
     // Campos de todos os boards do workspace: o lookup escolhe o campo do card relacionado por nome.
     db
-      .select({ boardId: fields.boardId, slug: fields.slug, name: fields.name, type: fields.type })
+      .select({ id: fields.id, boardId: fields.boardId, slug: fields.slug, name: fields.name, type: fields.type })
       .from(fields)
       .innerJoin(boards, eq(boards.id, fields.boardId))
       .where(and(eq(boards.workspaceId, wsId), isNull(fields.archivedAt)))

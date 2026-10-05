@@ -15,7 +15,8 @@ import { cn } from "@/lib/utils";
 export interface RegraConfig {
   id: string;
   kind: string;
-  phaseId: string | null;
+  phaseIds: string[] | null;
+  fromPhaseId: string | null;
   fieldId: string | null;
   expr: string;
   message: string | null;
@@ -52,7 +53,9 @@ export function resumoRegra(expr: string, condicoes: CampoCondicao[]): { texto: 
 export function ConfigRegras(ctx: Ctx) {
   const [editando, setEditando] = useState<string | null>(null);
   const { pendente, executar } = useAcaoConfig();
-  const nomeFase = (id: string | null) => (id ? ctx.fases.find((f) => f.id === id)?.name ?? "fase arquivada" : "qualquer fase");
+  const nomeFase = (id: string) => ctx.fases.find((f) => f.id === id)?.name ?? "fase arquivada";
+  const fasesDaRegra = (r: RegraConfig) =>
+    r.fromPhaseId ? `a partir de ${nomeFase(r.fromPhaseId)}` : r.phaseIds?.length ? r.phaseIds.map(nomeFase).join(", ") : "qualquer fase";
   const nomeCampo = (id: string | null) => (id ? ctx.campos.find((f) => f.id === id)?.name ?? "campo arquivado" : "qualquer campo");
   const regraEditada = editando && editando !== "nova" ? ctx.regras.find((r) => r.id === editando) ?? null : null;
   return (
@@ -74,7 +77,7 @@ export function ConfigRegras(ctx: Ctx) {
                 <div className="min-w-0 flex-1">
                   <div className="text-sm">
                     <span className="font-medium">{ROTULO_REGRA[r.kind] ?? r.kind}</span>
-                    <span className="text-muted-foreground"> · {nomeFase(r.phaseId)}</span>
+                    <span className="text-muted-foreground" data-fases-regra> · {fasesDaRegra(r)}</span>
                     {r.kind === "can_edit" && <span className="text-muted-foreground"> · {nomeCampo(r.fieldId)}</span>}
                     <span className="text-muted-foreground"> · </span>
                     <span data-testid="resumo-regra" className={cn(resumo.avancada && "font-mono text-xs")}>
@@ -117,7 +120,9 @@ export function ConfigRegras(ctx: Ctx) {
 function EditorRegra({ ctx, regra, fechar }: { ctx: Ctx; regra: RegraConfig | null; fechar: () => void }) {
   const { pendente, executar } = useAcaoConfig();
   const [kind, setKind] = useState(regra?.kind ?? "can_leave");
-  const [phaseId, setPhase] = useState(regra?.phaseId ?? "");
+  const [modoFase, setModoFase] = useState<"todas" | "escolhidas" | "apartir">(regra?.fromPhaseId ? "apartir" : regra?.phaseIds?.length ? "escolhidas" : "todas");
+  const [phaseIds, setPhaseIds] = useState<string[]>(regra?.phaseIds ?? []);
+  const [fromPhaseId, setFromPhaseId] = useState(regra?.fromPhaseId ?? ctx.fases[0]?.id ?? "");
   const [fieldId, setField] = useState(regra?.fieldId ?? "");
   const [expr, setExpr] = useState(regra?.expr ?? "");
   const [message, setMessage] = useState(regra?.message ?? "");
@@ -130,7 +135,16 @@ function EditorRegra({ ctx, regra, fechar }: { ctx: Ctx; regra: RegraConfig | nu
       aria-label={regra ? "Editar regra" : "Nova regra"}
       action={() =>
         executar(
-          () => salvarRegraAction(ctx.ws, ctx.board, regra?.id ?? null, { kind, phaseId: phaseId || null, fieldId: fieldId || null, expr: expr.trim() || "true", message, onFail }),
+          () =>
+            salvarRegraAction(ctx.ws, ctx.board, regra?.id ?? null, {
+              kind,
+              phaseIds: modoFase === "escolhidas" ? phaseIds : null,
+              fromPhaseId: modoFase === "apartir" ? fromPhaseId || null : null,
+              fieldId: fieldId || null,
+              expr: expr.trim() || "true",
+              message,
+              onFail,
+            }),
           regra ? "Regra salva" : "Regra criada",
           fechar,
         )
@@ -153,14 +167,11 @@ function EditorRegra({ ctx, regra, fechar }: { ctx: Ctx; regra: RegraConfig | nu
             </NativeSelect>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="regra-fase">Fase</Label>
-            <NativeSelect id="regra-fase" aria-label="Fase da regra" value={phaseId} onChange={(e) => setPhase(e.target.value)}>
-              <option value="">qualquer fase</option>
-              {ctx.fases.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
+            <Label htmlFor="regra-fase">Fases</Label>
+            <NativeSelect id="regra-fase" aria-label="Fases da regra" value={modoFase} onChange={(e) => setModoFase(e.target.value as typeof modoFase)}>
+              <option value="todas">todas as fases</option>
+              <option value="escolhidas">fases escolhidas…</option>
+              <option value="apartir">a partir da fase…</option>
             </NativeSelect>
           </div>
           {kind === "can_edit" ? (
@@ -187,6 +198,35 @@ function EditorRegra({ ctx, regra, fechar }: { ctx: Ctx; regra: RegraConfig | nu
             <div />
           )}
         </div>
+        {modoFase === "escolhidas" && (
+          <fieldset className="flex flex-wrap gap-x-4 gap-y-1 rounded-md border px-3 py-2" aria-label="Fases em que a regra vale">
+            <legend className="px-1 text-xs text-muted-foreground">Vale nestas fases</legend>
+            {ctx.fases.map((f) => (
+              <label key={f.id} className="flex items-center gap-1.5 text-sm">
+                <input
+                  type="checkbox"
+                  className="size-4"
+                  checked={phaseIds.includes(f.id)}
+                  onChange={(e) => setPhaseIds(e.target.checked ? ctx.fases.filter((x) => x.id === f.id || phaseIds.includes(x.id)).map((x) => x.id) : phaseIds.filter((x) => x !== f.id))}
+                />
+                {f.name}
+              </label>
+            ))}
+          </fieldset>
+        )}
+        {modoFase === "apartir" && (
+          <div className="flex items-center gap-2 text-sm">
+            <span>A partir de</span>
+            <NativeSelect aria-label="A partir da fase" value={fromPhaseId} onChange={(e) => setFromPhaseId(e.target.value)} className="w-auto">
+              {ctx.fases.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </NativeSelect>
+            <span className="text-xs text-muted-foreground">(esta e as seguintes, inclusive fases criadas depois)</span>
+          </div>
+        )}
         <ConstrutorCondicoes rotulo="Condição da regra" valor={expr} onChange={setExpr} campos={condicoes} />
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="regra-msg">Mensagem quando bloquear</Label>

@@ -3,7 +3,7 @@
 // Tudo é referenciado por `key` (estável, legível) em vez de UUID; o importador resolve as keys.
 // Puro: tipos, normalização e validação. A escrita no banco fica em src/db/template.ts.
 import { parse } from "./expr";
-import { TIPOS_VALIDOS } from "./config-campos";
+import { TIPOS_COLUNA_EDITAVEL, TIPOS_VALIDOS } from "./config-campos";
 import { normalizarGatilho, normalizarPassos } from "./automacoes";
 
 export const VERSAO_TEMPLATE = 1;
@@ -53,6 +53,8 @@ export interface CampoTemplate {
     is_parent?: boolean;
     inverse_name?: string;
     filter?: string;
+    /** Colunas da sub-tabela: keys de campos do board de destino; editable = edição direto na tabela. */
+    table_fields?: { field: string; editable?: boolean }[];
   };
   sequence?: { pattern: string; scope?: "global" | "year" | "month" | "day" | "parent"; seed?: number; pad?: number; parent_field?: string };
   /** via: key de relação deste board, ou "<board>.<campo>" para relação de outro board que aponta para este. */
@@ -66,7 +68,11 @@ export interface CampoTemplate {
 
 export interface RegraTemplate {
   kind: TipoRegra;
-  /** key da fase (null = todas). */
+  /** keys das fases em que a regra vale (ausente = todas). */
+  phases?: string[];
+  /** "a partir da fase": essa e as seguintes (exclusivo com phases). */
+  from_phase?: string;
+  /** Formato antigo (uma fase): aceito na importação, equivale a phases: [phase]. */
   phase?: string | null;
   field?: string | null;
   expr: string;
@@ -256,6 +262,12 @@ export function validarTemplate(t: Template, externos: Iterable<string> = []): E
         if (!alvo) err(oc, "relação sem board");
         else if (!boards.has(alvo) && !fora.has(alvo)) err(oc, `relação para board desconhecido: ${alvo}`);
         expr(`${oc} › relation.filter`, c.relation?.filter);
+        const destino = boards.get(alvo ?? "");
+        for (const col of c.relation?.table_fields ?? []) {
+          const f = destino?.fields.find((x) => x.key === col.field);
+          if (destino && (!f || f.type === "relation")) err(oc, `relation.table_fields: campo ${col.field} não existe no board ${alvo}`);
+          else if (f && col.editable && !TIPOS_COLUNA_EDITAVEL.has(f.type)) err(oc, `relation.table_fields: ${col.field} (${f.type}) não pode ser editado na tabela`);
+        }
       }
       if (c.type === "sequence") {
         if (!/\{n(:\d+)?\}/.test(c.sequence?.pattern ?? "")) err(oc, "sequence.pattern precisa conter {n}");
@@ -290,7 +302,8 @@ export function validarTemplate(t: Template, externos: Iterable<string> = []): E
     for (const [i, r] of (b.rules ?? []).entries()) {
       const or = `${ob} › regra ${i + 1}`;
       if (!TIPOS_REGRA.includes(r.kind)) err(or, `kind inválido: ${r.kind}`);
-      if (r.phase && !fases.has(r.phase)) err(or, `fase ${r.phase} não existe`);
+      for (const f of [...(r.phase ? [r.phase] : []), ...(r.phases ?? []), ...(r.from_phase ? [r.from_phase] : [])]) if (!fases.has(f)) err(or, `fase ${f} não existe`);
+      if (r.from_phase && (r.phases?.length || r.phase)) err(or, "use phases ou from_phase, não os dois");
       if (r.field && !campos.has(r.field)) err(or, `campo ${r.field} não existe`);
       if (!r.expr?.trim()) err(or, "expr obrigatória");
       else expr(or, r.expr);

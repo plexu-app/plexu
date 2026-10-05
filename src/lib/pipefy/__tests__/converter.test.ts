@@ -179,22 +179,45 @@ describe("converterPipefy", () => {
     expect(board("itens-do-pedido").fields.find((f) => f.key === "cnpj_do_pedido")).toMatchObject({ type: "lookup", lookup: { via: "pedidos-de-compra.items", path: "cnpj", mode: "ref" } });
   });
 
+  it("série de campos vira coluna da sub-tabela do pai; série de data é editável direto na tabela", () => {
+    const exp: PfExport = JSON.parse(JSON.stringify(PEDIDOS));
+    exp.repo.phases![0].fields!.push(...[1, 2, 3].map((n) => campo(`entrega_${n}`, `50${n}`, `Entrega item ${String(n).padStart(2, "0")}`, "date")));
+    const r = converterPipefy([exp, ITENS]);
+    expect(validarTemplate(r.template)).toEqual([]);
+    const itens = r.template.boards.find((b) => b.key === "itens-do-pedido")!;
+    const entrega = itens.fields.find((f) => f.type === "date")!;
+    expect(entrega).toBeTruthy();
+    const cols = r.template.boards.find((b) => b.key === "pedidos-de-compra")!.fields.find((f) => f.key === "items")!.relation!.table_fields!;
+    // Colunas padrão (as que o Plexu já mostrava) + a da série, editável por ser data
+    expect(cols.slice(0, 3)).toEqual([{ field: "valor" }, { field: "aprovado" }, { field: "cnpj_do_pedido" }]);
+    expect(cols).toContainEqual({ field: entrega.key, editable: true });
+  });
+
   it("fórmulas: SUM sobre a série vira rollup; SUBTRACT entre campos do card vira texto calculado", () => {
     const p = board("pedidos-de-compra");
     expect(p.fields.find((f) => f.key === "total")).toMatchObject({ type: "rollup", rollup: { via: "items", agg: "sum", expr: "valor", format: "currency" } });
     expect(p.fields.find((f) => f.key === "saldo")).toMatchObject({ type: "dynamic_text", dynamic_text: { template: "{card.total - card.total_aprovado}" } });
   });
 
-  it("'move de volta se' em várias fases vira uma regra can_enter", () => {
+  it("'move de volta se' em várias fases vira uma regra can_enter valendo nessas fases", () => {
     const p = board("pedidos-de-compra");
     expect(p.rules).toEqual([
       {
         kind: "can_enter",
-        phase: null,
-        expr: '!(fase_destino in ["Aprovação", "Entrega"]) || !(filhos("items").algum(p, p.valor == null))',
+        phases: ["aprovacao", "entrega"],
+        expr: '!(filhos("items").algum(p, p.valor == null))',
         message: "Impedir sem valor do item",
       },
     ]);
+  });
+
+  it("destinos permitidos: can_enter nas fases não permitidas, para quem vem da fase restrita", () => {
+    const exp: PfExport = JSON.parse(JSON.stringify(PEDIDOS));
+    exp.repo.phases![0].cards_can_be_moved_to_phases = [{ id: "11" }];
+    const r = converterPipefy([exp, ITENS]);
+    const regras = r.template.boards.find((b) => b.key === "pedidos-de-compra")!.rules!;
+    expect(regras).toContainEqual({ kind: "can_enter", phases: ["entrega"], expr: 'fase_origem != "Abertura"', message: "Destinos permitidos a partir de Abertura: Aprovação" });
+    expect(validarTemplate(r.template)).toEqual([]);
   });
 
   it("automações sem equivalente ficam pendentes; séries numeradas viram uma só; duplicatas da API contam uma vez", () => {
