@@ -111,6 +111,8 @@ test.describe("parte A: shell, kanban e lista", () => {
     const pd1 = page.locator("[data-card]").filter({ hasText: "PD-0001" });
     await expect(pd1.locator('[data-campo-cartao="Valor total"]')).toBeVisible();
     await expect(pd1.locator("[data-tempos]")).toBeVisible();
+    // Nenhum bloco vazio no cartão: sem linha de etiquetas (o modelo não tem) nem grade de campos sem campo
+    await expect(page.locator("[data-card] [data-etiquetas], [data-card] dl:not(:has(*))")).toHaveCount(0);
     await expect(pd1.locator("[data-conexoes-cartao]")).toContainText("Mercado Aurora");
     await pd1.getByRole("button", { name: "Esconder conexões" }).click();
     await expect(pd1.locator("[data-conexoes-cartao]")).toHaveCount(0);
@@ -122,6 +124,10 @@ test.describe("parte A: shell, kanban e lista", () => {
     await expect(page.locator("[data-card]")).toHaveCount(0);
     await page.getByLabel("Filtrar cartões").fill("PD-0004");
     await expect(page.locator("[data-card]")).toHaveCount(1);
+    // Sem acento: "decoracao" acha "Decoração da loja" (f_unaccent no servidor)
+    await page.getByLabel("Filtrar cartões").fill("decoracao");
+    await expect(page.locator("[data-card]")).toHaveCount(1);
+    await expect(page.locator("[data-card]")).toContainText("Decoração da loja");
   });
 
   test("rolagem infinita: 15 cards por fase e o resto ao rolar (fase com 40)", async ({ page }) => {

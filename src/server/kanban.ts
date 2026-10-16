@@ -37,7 +37,9 @@ export function condicoesDoBoard(board: BoardCompleto, f: FiltrosBoard): SQL[] {
   const cs: SQL[] = [eq(cards.boardId, board.id), isNull(cards.deletedAt)];
   if (f.q) {
     const termo = `%${f.q.replace(/[%_\\]/g, "\\$&")}%`;
-    cs.push(sql`(${cards.title} ilike ${termo} or ${cards.props}::text ilike ${termo} or ${cards.computed}::text ilike ${termo})`);
+    // Sem acento e sem caixa (f_unaccent, migração 0006); o termo vai como parâmetro, nunca concatenado.
+    const t = sql`f_unaccent(${termo})`;
+    cs.push(sql`(f_unaccent(${cards.title}) ilike ${t} or f_unaccent(${cards.props}::text) ilike ${t} or f_unaccent(${cards.computed}::text) ilike ${t})`);
   }
   if (f.resp) {
     // assignees ou qualquer campo pessoa (valor único ou lista) com o id

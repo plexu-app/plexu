@@ -93,6 +93,7 @@ export const fieldPhaseSettings = pgTable("field_phase_settings", {
   position: integer("position"),
 }, (t) => [primaryKey({ columns: [t.fieldId, t.phaseId] })]);
 
+// Busca em cards usa f_unaccent(text) (extensão unaccent, migração 0006); funções não são modeladas aqui.
 export const cards = pgTable("cards", {
   id: id(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),

@@ -6,6 +6,12 @@
 --   * nada é apagado fisicamente em objetos de configuração: archived_at.
 
 create extension if not exists pgcrypto;
+create extension if not exists unaccent;
+
+-- Busca sem acento: unaccent com dicionário fixo, imutável (migração 0006).
+create or replace function f_unaccent(text) returns text
+  language sql immutable strict parallel safe
+  as $$ select public.unaccent('public.unaccent'::regdictionary, $1) $$;
 
 -- =========================================================
 -- 1. TENANT, IDENTIDADE, PERMISSÃO

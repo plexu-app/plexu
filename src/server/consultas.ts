@@ -1,6 +1,6 @@
 import "server-only";
 // Leituras para a UI. Componentes e route handlers não fazem SQL: chamam estas funções.
-import { and, asc, count, desc, eq, ilike, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   attachments,
@@ -278,7 +278,11 @@ export async function cardDoBoard(boardId: string, cardId: string) {
 export async function buscarCards(wsId: string, boardId: string, termo: string, excluir: string[] = []) {
   const t = termo.trim();
   const filtro = t
-    ? or(ilike(cards.title, `%${t.replace(/[%_\\]/g, "\\$&")}%`), sql`${cards.id}::text like ${`${t.toLowerCase()}%`}`)
+    ? or(
+        // sem acento e sem caixa (f_unaccent, migração 0006); termo como parâmetro
+        sql`f_unaccent(${cards.title}) ilike f_unaccent(${`%${t.replace(/[%_\\]/g, "\\$&")}%`})`,
+        sql`${cards.id}::text like ${`${t.toLowerCase()}%`}`,
+      )
     : undefined;
   return db
     .select({ id: cards.id, title: cards.title })

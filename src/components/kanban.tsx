@@ -364,6 +364,8 @@ function CartaoVisual({ card, href, flutuando, concluido }: { card: CartaoKanban
       className={cn("rounded border border-line bg-paper text-ink", flutuando && "border-accent")}
     >
       <div className="relative pb-3 pl-2 pr-3 pt-3" data-corpo-cartao>
+        {/* Etiquetas (labels): o modelo ainda não tem. Quando tiver, a linha de pills entra aqui e só aparece
+            com ao menos uma etiqueta (nada de linha vazia). */}
         <div className="line-clamp-4 pr-5 text-sm font-semibold leading-5 tracking-[-0.01em]" data-titulo-cartao>
           {tituloOu(card.title, card.id)}
         </div>
