@@ -107,7 +107,11 @@ test("formato (regex): erro abaixo do campo com a mensagem configurada, ajuda se
     await page.goto("/w/demo/b/pedidos/settings?aba=campos");
     await page.getByRole("button", { name: "Editar Contato" }).click();
     const m = page.getByRole("dialog", { name: /Editar campo/ });
-    await m.getByLabel("Texto de ajuda").fill(ajuda);
+    // Texto de ajuda é opcional no editor: liga para preencher, desliga para limpar
+    if (ajuda) {
+      await m.getByLabel("Mostrar texto de ajuda").check();
+      await m.getByLabel("Texto de ajuda", { exact: true }).fill(ajuda);
+    } else await m.getByLabel("Mostrar texto de ajuda").uncheck();
     await m.getByText("Avançado").click();
     await m.getByLabel("Formato (regex)").fill(regex);
     await m.getByLabel("Mensagem de formato").fill(mensagem);

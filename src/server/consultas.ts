@@ -32,6 +32,7 @@ export interface CampoUI {
   uniqueValue: boolean;
   validation: Record<string, unknown> | null;
   helpText: string | null;
+  description: string | null;
 }
 
 export interface FaseUI {
@@ -189,6 +190,7 @@ function campoUI(f: typeof fields.$inferSelect): CampoUI {
     uniqueValue: f.uniqueValue,
     validation: (f.validation as Record<string, unknown> | null) ?? null,
     helpText: f.helpText,
+    description: f.description,
   };
 }
 

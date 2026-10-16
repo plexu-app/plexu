@@ -22,6 +22,7 @@ export interface ExecucaoLinha {
   erro: string | null;
   log: unknown[];
   quando: string;
+  duracaoMs: number | null;
   gatilho: string;
 }
 
@@ -52,7 +53,7 @@ export function Execucoes({
   return (
     <Card>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
-        <CardTitle>Execuções</CardTitle>
+        <CardTitle>Logs</CardTitle>
         <div className="flex gap-2">
           <NativeSelect
             aria-label="Filtrar por automação ou ação"
@@ -86,8 +87,7 @@ export function Execucoes({
         </div>
       </CardHeader>
       <CardContent>
-        {!linhas.length && <p className="text-sm text-muted-foreground">Nenhuma execução com esses filtros.</p>}
-        {linhas.length > 0 && (
+        {(
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-muted-foreground">
               <tr>
@@ -96,10 +96,18 @@ export function Execucoes({
                 <th className="font-medium">Card</th>
                 <th className="font-medium">Gatilho</th>
                 <th className="font-medium">Status</th>
+                <th className="font-medium">Duração</th>
                 <th />
               </tr>
             </thead>
             <tbody>
+              {!linhas.length && (
+                <tr className="border-t">
+                  <td colSpan={7} className="py-6 text-center text-ink-3">
+                    Nenhuma execução com esses filtros.
+                  </td>
+                </tr>
+              )}
               {linhas.map((l) => (
                 <Fragment key={l.id}>
                   <tr className="cursor-pointer border-t hover:bg-muted/50" onClick={() => setAberta(aberta === l.id ? null : l.id)} data-execucao={l.id}>
@@ -110,6 +118,9 @@ export function Execucoes({
                     <td>
                       <BadgeStatus status={l.status} env={l.env} />
                       {l.tentativa > 1 && <span className="ml-1 text-xs text-muted-foreground">tentativa {l.tentativa}</span>}
+                    </td>
+                    <td className="font-mono text-xs text-ink-2" data-duracao>
+                      {l.duracaoMs === null ? "—" : l.duracaoMs < 1000 ? `${l.duracaoMs} ms` : `${(l.duracaoMs / 1000).toFixed(1)} s`}
                     </td>
                     <td className="text-right">
                       <Button
@@ -134,7 +145,7 @@ export function Execucoes({
                   </tr>
                   {aberta === l.id && (
                     <tr>
-                      <td colSpan={6} className="pb-3">
+                      <td colSpan={7} className="pb-3">
                         {l.erro && <p className="mb-1 text-sm text-destructive">{l.erro}</p>}
                         <LogExecucao log={l.log} />
                       </td>

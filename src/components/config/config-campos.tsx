@@ -1,20 +1,21 @@
 "use client";
-// Settings → Campos. Lista agrupada pela fase de origem (arrastar entre grupos muda a origem) e modal
-// do campo em linguagem de usuário: CEL só dentro de "Avançado" ou do modo avançado do construtor.
+// Editor de campo (prompt PR 2, C1): modal de 760px em duas colunas — à esquerda nome, descrição e ajuda
+// (opcionais), opções do tipo, obrigatoriedade e fases; à direita a prévia ao vivo. No rodapé, as
+// dependências do campo. Linguagem de usuário: CEL só dentro de "Avançado" ou do modo avançado do construtor.
+// A lista de campos por fase fica em editor-formulario.tsx.
 import { useState } from "react";
-import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { Archive, Calculator, GripVertical, Pencil, Plus } from "lucide-react";
-import { ajustarFaseAction, arquivarCampoAction, definirFasesCampoAction, salvarCampoAction } from "@/app/w/[ws]/b/[board]/settings/actions";
+import { Calculator, GitFork } from "lucide-react";
+import { ajustarFaseAction, salvarCampoAction } from "@/app/w/[ws]/b/[board]/settings/actions";
 import { CampoInput } from "@/components/card/campo-input";
 import { ConstrutorCondicoes, type CampoCondicao } from "@/components/condicoes/construtor";
 import { EditorCel } from "@/components/config/editor-cel";
 import { useAcaoConfig } from "@/components/config/config-fases";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input, Label, NativeSelect, Textarea } from "@/components/ui/input";
-import { Badge, Card, CardContent, CardHeader, CardTitle, Table, TBody, Td, Th, THead, Tr } from "@/components/ui/misc";
+import { Badge, Table, TBody, Td, Th, THead, Tr } from "@/components/ui/misc";
 import { TIPOS_CAMPO, TIPOS_COLUNA_EDITAVEL } from "@/lib/config-campos";
-import { fasesDoCampo, obrigatorioOculto } from "@/lib/fases-preenchimento";
+import { fasesDoCampo } from "@/lib/fases-preenchimento";
 import { exprDoValorFixo, lerValorInicial, TIPOS_DATA, TIPOS_NUMERO, type ModoInicial } from "@/lib/valor-inicial";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +30,7 @@ export interface CampoConfig {
   defaultValueExpr: string | null;
   uniqueValue: boolean;
   helpText: string | null;
+  description?: string | null;
   validation?: Record<string, unknown> | null;
 }
 
@@ -54,214 +56,20 @@ export interface ContextoCampos {
   camposPorBoard?: Record<string, { id: string; name: string; type: string }[]>;
   /** campos disponíveis no construtor de condições */
   condicoes: CampoCondicao[];
+  /** Onde cada campo é usado (rodapé do editor). */
+  dependencias?: Record<string, { tipo: string; nome: string }[]>;
+  /** Campos com visibilidade/obrigatoriedade definidas pelas condicionais em campos. */
+  geradosCondicionais?: { visivel: string[]; obrigatorio: string[] };
 }
 
 const rotuloTipo = new Map(TIPOS_CAMPO.map((t) => [t.tipo, t.rotulo]));
 const calculado = new Set(TIPOS_CAMPO.filter((t) => t.calculado).map((t) => t.tipo));
-const SEM_FASE = "__sem_fase";
 
 
 /** Fases de preenchimento válidas do campo, na ordem das fases do board. */
 function fasesNaLista(ctx: ContextoCampos, config: Record<string, unknown>): string[] {
   const ids = new Set(fasesDoCampo(config));
   return ctx.fases.filter((f) => ids.has(f.id)).map((f) => f.id);
-}
-
-export function ConfigCampos(ctx: ContextoCampos) {
-  const [editando, setEditando] = useState<string | null>(null);
-  const [arrastando, setArrastando] = useState<string | null>(null);
-  // Fases otimistas enquanto a server action responde.
-  const [otimistas, setOtimistas] = useState<Record<string, string[]>>({});
-  const { pendente, executar } = useAcaoConfig();
-  const sensores = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor));
-  const campoEditado = editando && editando !== "novo" ? ctx.campos.find((c) => c.id === editando) ?? null : null;
-  const fasesDe = (c: CampoConfig) => otimistas[c.id] ?? fasesNaLista(ctx, c.config);
-  const primeira = (c: CampoConfig) => fasesDe(c)[0] ?? null;
-  const comFases = ctx.fases.length > 0;
-  const posicao = new Map(ctx.fases.map((f, i) => [f.id, i]));
-  const nomes = (ids: string[]) => ids.map((id) => ctx.fases.find((f) => f.id === id)?.name ?? "").join(", ");
-
-  function mudarFases(c: CampoConfig, novas: string[]) {
-    const ordenadas = ctx.fases.filter((f) => novas.includes(f.id)).map((f) => f.id);
-    const atuais = fasesDe(c);
-    if (ordenadas.length === atuais.length && ordenadas.every((x, i) => x === atuais[i])) return;
-    setOtimistas((o) => ({ ...o, [c.id]: ordenadas }));
-    executar(
-      () => definirFasesCampoAction(ctx.ws, ctx.board, c.id, ordenadas),
-      ordenadas.length ? `${c.name}: preenchido em ${nomes(ordenadas)}` : `${c.name}: em todas as fases`,
-      undefined,
-      () =>
-        setOtimistas((o) => {
-          const resto = { ...o };
-          delete resto[c.id];
-          return resto;
-        }),
-    );
-  }
-
-  /** Arrastar para o grupo X: X vira a primeira fase (as listadas depois dela continuam). */
-  function aoSoltar(e: DragEndEvent) {
-    setArrastando(null);
-    const c = ctx.campos.find((x) => x.id === String(e.active.id));
-    if (!c || !e.over) return;
-    const alvo = String(e.over.id);
-    if (alvo === SEM_FASE) return mudarFases(c, []);
-    const p = posicao.get(alvo) ?? 0;
-    mudarFases(c, [alvo, ...fasesDe(c).filter((id) => (posicao.get(id) ?? 0) > p)]);
-  }
-
-  const grupos = comFases
-    ? [
-        ...ctx.fases.map((f) => ({ id: f.id, titulo: `A partir de ${f.name}`, campos: ctx.campos.filter((c) => primeira(c) === f.id) })),
-        { id: SEM_FASE, titulo: "Em todas as fases", campos: ctx.campos.filter((c) => primeira(c) === null) },
-      ]
-    : [{ id: SEM_FASE, titulo: "", campos: ctx.campos }];
-  const emArraste = ctx.campos.find((c) => c.id === arrastando);
-
-  const linha = (c: CampoConfig) => (
-    <LinhaCampo key={c.id} c={c} arrastavel={comFases}>
-      <Td className="font-medium">
-        {c.name}
-        {ctx.titleFieldId === c.id && (
-          <Badge variant="secondary" className="ml-2">
-            título
-          </Badge>
-        )}
-      </Td>
-      <Td>
-        <span className="inline-flex items-center gap-1">
-          {rotuloTipo.get(c.type) ?? c.type}
-          {calculado.has(c.type) && <Calculator className="size-3 text-primary" aria-label="calculado" />}
-        </span>
-      </Td>
-      {comFases && (
-        <Td>
-          <SeletorFases nome={c.name} fases={ctx.fases} valor={fasesDe(c)} desabilitado={pendente} onChange={(v) => mudarFases(c, v)} />
-        </Td>
-      )}
-      <Td className="text-xs text-muted-foreground">
-        {[c.requiredExpr && (c.requiredExpr === "true" ? "obrigatório" : "obrigatório quando…"), c.visibleExpr && "aparece quando…", c.uniqueValue && "único"]
-          .filter(Boolean)
-          .join(" · ") || "—"}
-        {obrigatorioOculto(ctx.fases, ctx.ajustes, c).map((fase) => (
-          <span key={fase} className="mt-1 block font-medium text-warning-strong" data-aviso-campo={c.slug} role="note">
-            obrigatório mas oculto {fase === "todas as fases" ? "em todas as fases" : `na fase ${fase}`}
-          </span>
-        ))}
-      </Td>
-      <Td className="text-right">
-        <Button variant="ghost" size="icon" aria-label={`Editar ${c.name}`} onClick={() => setEditando(c.id)}>
-          <Pencil />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={`Arquivar ${c.name}`}
-          disabled={pendente}
-          onClick={() => executar(() => arquivarCampoAction(ctx.ws, ctx.board, c.id), "Campo arquivado")}
-        >
-          <Archive />
-        </Button>
-      </Td>
-    </LinhaCampo>
-  );
-
-  return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between">
-        <div>
-          <CardTitle>Campos</CardTitle>
-          {comFases && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Cada campo começa numa fase: fica oculto antes dela, editável nas fases marcadas e somente leitura nas outras. Arraste entre os grupos para mudar a primeira fase.
-            </p>
-          )}
-        </div>
-        <Button size="sm" onClick={() => setEditando("novo")}>
-          <Plus /> Novo campo
-        </Button>
-      </CardHeader>
-      <CardContent className="p-2">
-        <DndContext
-          id={`campos-${ctx.board}`}
-          sensors={sensores}
-          onDragStart={(e) => setArrastando(String(e.active.id))}
-          onDragEnd={aoSoltar}
-          onDragCancel={() => setArrastando(null)}
-        >
-          <Table>
-            <THead>
-              <Tr>
-                {comFases && <Th className="w-8" />}
-                <Th>Nome</Th>
-                <Th>Tipo</Th>
-                {comFases && <Th>Preenchido em</Th>}
-                <Th>Regras do campo</Th>
-                <Th className="w-24" />
-              </Tr>
-            </THead>
-            {grupos.map((g) => (
-              <GrupoFase key={g.id} id={g.id} titulo={g.titulo} colunas={comFases ? 6 : 4} vazio={g.campos.length === 0}>
-                {g.campos.map(linha)}
-              </GrupoFase>
-            ))}
-          </Table>
-          <DragOverlay>{emArraste ? <div className="rounded-md border bg-background px-3 py-1.5 text-sm font-medium">{emArraste.name}</div> : null}</DragOverlay>
-        </DndContext>
-      </CardContent>
-      <Dialog open={editando !== null} onOpenChange={(v) => !v && setEditando(null)}>
-        <DialogContent className="max-w-5xl">
-          {editando !== null && <EditorCampo key={editando} ctx={ctx} campo={campoEditado} fechar={() => setEditando(null)} />}
-        </DialogContent>
-      </Dialog>
-    </Card>
-  );
-}
-
-/** Grupo (tbody) que recebe campos arrastados; o nome da fase é a primeira linha. */
-function GrupoFase({ id, titulo, colunas, vazio, children }: { id: string; titulo: string; colunas: number; vazio: boolean; children: React.ReactNode }) {
-  const { setNodeRef, isOver } = useDroppable({ id });
-  return (
-    <TBody ref={setNodeRef} data-grupo-fase={titulo || undefined} className={cn(isOver && "bg-primary/5 outline-2 -outline-offset-2 outline-primary/40")}>
-      {titulo && (
-        <tr>
-          <th scope="rowgroup" colSpan={colunas} className="bg-muted/50 px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {titulo}
-          </th>
-        </tr>
-      )}
-      {children}
-      {vazio && (
-        <tr>
-          <td colSpan={colunas} className="px-3 py-2 text-xs text-muted-foreground">
-            Nenhum campo. Arraste um campo para cá.
-          </td>
-        </tr>
-      )}
-    </TBody>
-  );
-}
-
-function LinhaCampo({ c, arrastavel, children }: { c: CampoConfig; arrastavel: boolean; children: React.ReactNode }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: c.id, disabled: !arrastavel });
-  return (
-    <Tr ref={setNodeRef} data-config-campo={c.slug} className={cn(isDragging && "opacity-40")}>
-      {arrastavel && (
-        <Td className="w-8 pr-0">
-          <button
-            type="button"
-            className="cursor-grab rounded p-1 text-muted-foreground hover:bg-muted active:cursor-grabbing"
-            aria-label={`Arrastar ${c.name}`}
-            {...attributes}
-            {...listeners}
-          >
-            <GripVertical className="size-4" />
-          </button>
-        </Td>
-      )}
-      {children}
-    </Tr>
-  );
 }
 
 type Config = Record<string, unknown>;
@@ -371,14 +179,28 @@ function ValorInicial({ tipo, config, expr, onChange }: { tipo: string; config: 
   );
 }
 
-function EditorCampo({ ctx, campo, fechar }: { ctx: ContextoCampos; campo: CampoConfig | null; fechar: () => void }) {
+/** Campo novo vindo da paleta: tipo, fase e posição já escolhidos. */
+export interface InicialCampo {
+  tipo?: string;
+  fases?: string[];
+  /** Inserir antes deste campo (arrastar da paleta para uma posição). */
+  antesDe?: string | null;
+}
+
+export function EditorCampo({ ctx, campo, fechar, inicial }: { ctx: ContextoCampos; campo: CampoConfig | null; fechar: () => void; inicial?: InicialCampo }) {
   const { pendente, executar } = useAcaoConfig();
   const [nome, setNome] = useState(campo?.name ?? "");
   const [slug, setSlug] = useState(campo?.slug ?? "");
-  const [tipo, setTipo] = useState(campo?.type ?? "text");
+  const [tipo, setTipo] = useState(campo?.type ?? inicial?.tipo ?? "text");
+  const [descricao, setDescricao] = useState(campo?.description ?? "");
+  const [comDescricao, setComDescricao] = useState(!!campo?.description);
+  const [comAjuda, setComAjuda] = useState(!!campo?.helpText);
+  const geradoVisivel = !!campo && !!ctx.geradosCondicionais?.visivel.includes(campo.id);
+  const geradoObrigatorio = !!campo && !!ctx.geradosCondicionais?.obrigatorio.includes(campo.id);
+  const dependencias = campo ? (ctx.dependencias?.[campo.id] ?? []) : [];
   // Fases arquivadas saem da seleção ao abrir: o servidor recusaria ids que não são fases ativas.
   const [config, setConfig] = useState<Config>(() => {
-    const c = { ...(campo?.config ?? {}) };
+    const c = { ...(campo?.config ?? (inicial?.fases?.length ? { fill_phases: inicial.fases } : {})) };
     if (Array.isArray(c.fill_phases)) c.fill_phases = fasesNaLista(ctx, c);
     if (Array.isArray(c.fill_phases) && !(c.fill_phases as string[]).length) delete c.fill_phases;
     return c;
@@ -422,7 +244,9 @@ function EditorCampo({ ctx, campo, fechar }: { ctx: ContextoCampos; campo: Campo
               visibleExpr,
               defaultValueExpr: defaultExpr,
               unico,
-              ajuda,
+              ajuda: comAjuda ? ajuda : "",
+              descricao: comDescricao ? descricao : "",
+              antesDe: campo ? null : (inicial?.antesDe ?? null),
               titulo,
               validacao: { ...(campo?.validation ?? {}), regex: formato, message: msgFormato },
             }),
@@ -435,7 +259,7 @@ function EditorCampo({ ctx, campo, fechar }: { ctx: ContextoCampos; campo: Campo
         <DialogTitle>{campo ? `Editar campo: ${campo.name}` : "Novo campo"}</DialogTitle>
         <DialogDescription>Como o campo aparece e quando precisa ser preenchido.</DialogDescription>
       </DialogHeader>
-      <DialogBody className="grid grid-cols-[minmax(0,1fr)_280px] gap-6">
+      <DialogBody className="grid grid-cols-[minmax(0,1fr)_240px] gap-6">
         <div className="flex min-w-0 flex-col gap-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
@@ -452,6 +276,16 @@ function EditorCampo({ ctx, campo, fechar }: { ctx: ContextoCampos; campo: Campo
                 ))}
               </NativeSelect>
             </div>
+          </div>
+          <div className="flex flex-col gap-2" data-opcionais-campo>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" className="size-4" checked={comDescricao} onChange={(e) => setComDescricao(e.target.checked)} /> Descrição
+            </label>
+            {comDescricao && <Textarea aria-label="Descrição do campo" rows={2} value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Aparece abaixo do nome, no formulário." />}
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" className="size-4" checked={comAjuda} onChange={(e) => setComAjuda(e.target.checked)} aria-label="Mostrar texto de ajuda" /> Texto de ajuda
+            </label>
+            {comAjuda && <Input id="campo-ajuda" aria-label="Texto de ajuda" value={ajuda} onChange={(e) => setAjuda(e.target.value)} placeholder="Aparece abaixo do campo." />}
           </div>
           {ctx.fases.length > 0 && (
             <fieldset className="flex flex-col gap-2" aria-describedby="campo-fases-ajuda">
@@ -512,24 +346,32 @@ function EditorCampo({ ctx, campo, fechar }: { ctx: ContextoCampos; campo: Campo
           </section>
           {!ehCalculado && (
             <>
-              <RegraDoCampo rotulo="Aparece" valor={visibleExpr} onChange={setVisible} opcoes={[{ rotulo: "sempre", expr: "" }]} campos={condicoes} />
-              <RegraDoCampo
-                rotulo="Obrigatório"
-                valor={requiredExpr}
-                onChange={setRequired}
-                opcoes={[
-                  { rotulo: "nunca", expr: "" },
-                  { rotulo: "sempre", expr: "true" },
-                ]}
-                campos={condicoes}
-              />
+              {geradoVisivel ? (
+                <p className="rounded border border-dashed border-line px-3 py-2 text-xs text-ink-2" data-gerado-condicional="visivel">
+                  <GitFork className="mr-1 inline size-3.5" aria-hidden /> Quando aparece é definido pelas condicionais em campos.
+                </p>
+              ) : (
+                <RegraDoCampo rotulo="Aparece" valor={visibleExpr} onChange={setVisible} opcoes={[{ rotulo: "sempre", expr: "" }]} campos={condicoes} />
+              )}
+              {geradoObrigatorio ? (
+                <p className="rounded border border-dashed border-line px-3 py-2 text-xs text-ink-2" data-gerado-condicional="obrigatorio">
+                  <GitFork className="mr-1 inline size-3.5" aria-hidden /> Quando é obrigatório é definido pelas condicionais em campos.
+                </p>
+              ) : (
+                <RegraDoCampo
+                  rotulo="Obrigatório"
+                  valor={requiredExpr}
+                  onChange={setRequired}
+                  opcoes={[
+                    { rotulo: "nunca", expr: "" },
+                    { rotulo: "sempre", expr: "true" },
+                  ]}
+                  campos={condicoes}
+                />
+              )}
               <ValorInicial key={`${tipo}:${versaoInicial}`} tipo={tipo} config={config} expr={defaultExpr} onChange={setDefault} />
             </>
           )}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="campo-ajuda">Texto de ajuda (aparece abaixo do campo)</Label>
-            <Input id="campo-ajuda" aria-label="Texto de ajuda" value={ajuda} onChange={(e) => setAjuda(e.target.value)} />
-          </div>
           <details className="rounded-md border p-3" data-testid="campo-avancado">
             <summary className="cursor-pointer text-sm font-medium">Avançado</summary>
             <div className="mt-3 flex flex-col gap-4">
@@ -570,15 +412,37 @@ function EditorCampo({ ctx, campo, fechar }: { ctx: ContextoCampos; campo: Campo
             </div>
           </details>
         </div>
-        <PreviaCampo nome={nome} tipo={tipo} config={config} ajuda={ajuda} obrigatorio={requiredExpr.trim() === "true"} condicional={!!requiredExpr.trim() && requiredExpr.trim() !== "true"} />
+        <PreviaCampo
+          nome={nome}
+          tipo={tipo}
+          config={config}
+          ajuda={comAjuda ? ajuda : ""}
+          descricao={comDescricao ? descricao : ""}
+          obrigatorio={requiredExpr.trim() === "true"}
+          condicional={!!requiredExpr.trim() && requiredExpr.trim() !== "true"}
+        />
       </DialogBody>
-      <DialogFooter>
+      <DialogFooter className="items-start justify-between">
+        <details className="min-w-0 max-w-[60%] text-[13px]" data-dependencias-campo>
+          <summary className="cursor-pointer text-ink-2 hover:text-ink">Dependências do campo ({dependencias.length})</summary>
+          {dependencias.length ? (
+            <ul className="mt-2 flex max-h-32 flex-col gap-1 overflow-y-auto text-xs text-ink-2">
+              {dependencias.map((d, i) => (
+                <li key={i}>{d.nome}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-xs text-ink-3">{campo ? "Nenhuma regra, automação ou expressão usa este campo." : "Campo novo: ainda não é usado."}</p>
+          )}
+        </details>
+        <div className="flex gap-2">
         <Button type="button" variant="ghost" onClick={fechar}>
           Cancelar
         </Button>
         <Button type="submit" disabled={pendente}>
           Salvar campo
         </Button>
+        </div>
       </DialogFooter>
     </form>
   );
@@ -608,11 +472,27 @@ function ConfigAvancadaPorTipo({ tipo, config, set }: { tipo: string; config: Co
 }
 
 /** Como o campo aparece no card, com as opções atuais do formulário. */
-function PreviaCampo({ nome, tipo, config, ajuda, obrigatorio, condicional }: { nome: string; tipo: string; config: Config; ajuda: string; obrigatorio: boolean; condicional: boolean }) {
+function PreviaCampo({
+  nome,
+  tipo,
+  config,
+  ajuda,
+  descricao,
+  obrigatorio,
+  condicional,
+}: {
+  nome: string;
+  tipo: string;
+  config: Config;
+  ajuda: string;
+  descricao: string;
+  obrigatorio: boolean;
+  condicional: boolean;
+}) {
   const ehCalculado = calculado.has(tipo);
   return (
     <aside className="flex flex-col gap-2 self-start rounded-md border bg-muted/40 p-3" aria-label="Prévia do campo" data-testid="previa-campo">
-      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Prévia</span>
+      <span className="text-xs text-ink-2">Esta é uma prévia do seu campo</span>
       <div className="flex items-center gap-2">
         <Label>
           {nome || "Nome do campo"}
@@ -625,6 +505,7 @@ function PreviaCampo({ nome, tipo, config, ajuda, obrigatorio, condicional }: { 
         )}
         {condicional && <Badge variant="outline">obrigatório se…</Badge>}
       </div>
+      {descricao && <p className="-mt-1 text-xs text-ink-2">{descricao}</p>}
       {ehCalculado ? (
         <div className="min-h-9 rounded-md border border-dashed border-primary/30 bg-primary/5 px-3 py-2 text-sm text-muted-foreground">
           {tipo === "sequence" ? String(sub(config, "sequence").pattern ?? "{n}") : tipo === "dynamic_text" ? String(sub(config, "dynamic_text").template ?? "") : "valor calculado"}
@@ -1036,54 +917,5 @@ function MatrizFases({ ctx, campo }: { ctx: ContextoCampos; campo: CampoConfig }
         </TBody>
       </Table>
     </div>
-  );
-}
-
-/** Multi-seleção de fases em chips: o resumo mostra as marcadas; abre uma lista de caixas. */
-function SeletorFases({
-  nome,
-  fases,
-  valor,
-  desabilitado,
-  onChange,
-}: {
-  nome: string;
-  fases: { id: string; name: string }[];
-  valor: string[];
-  desabilitado: boolean;
-  onChange: (v: string[]) => void;
-}) {
-  const marcadas = fases.filter((f) => valor.includes(f.id));
-  return (
-    <details className="group relative" data-preenchido-em={nome}>
-      <summary
-        className="flex min-h-8 cursor-pointer list-none flex-wrap items-center gap-1 rounded-md border bg-background px-2 py-1 hover:border-primary/50 [&::-webkit-details-marker]:hidden"
-        aria-label={`Preenchido em: ${nome}`}
-      >
-        {marcadas.length ? (
-          marcadas.map((f) => (
-            <span key={f.id} className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary-strong" data-chip-fase={f.name}>
-              {f.name}
-            </span>
-          ))
-        ) : (
-          <span className="text-xs text-muted-foreground">todas as fases</span>
-        )}
-      </summary>
-      <div className="absolute z-20 mt-1 flex w-48 flex-col gap-1.5 rounded-md border bg-background p-2" role="group" aria-label={`Fases de ${nome}`}>
-        {fases.map((f) => (
-          <label key={f.id} className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="size-4"
-              disabled={desabilitado}
-              checked={valor.includes(f.id)}
-              onChange={(e) => onChange(e.target.checked ? [...valor, f.id] : valor.filter((x) => x !== f.id))}
-            />
-            {f.name}
-          </label>
-        ))}
-      </div>
-    </details>
   );
 }

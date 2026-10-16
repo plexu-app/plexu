@@ -31,6 +31,9 @@ import {
   editarCampo,
   editarRegra,
   moverFase,
+  reordenarCampos,
+  restaurarCampo,
+  salvarCondicionais,
   type DadosCampo,
   type DadosFase,
   type DadosRegra,
@@ -151,4 +154,18 @@ export async function buscarCardsDoBoardAction(ws: string, board: string, termo:
   const b = await exigirBoard(ctx, board);
   exigirConfigurador(ctx);
   return buscarCards(ctx.ws.id, b.id, String(termo ?? "").slice(0, 100), []);
+}
+
+// Editor do formulário da fase e condicionais em campos (prompt PR 2, C1)
+
+export async function reordenarCamposAction(ws: string, board: string, ids: string[]) {
+  return comBoard(ws, board, (a) => reordenarCampos(a, ids));
+}
+
+export async function restaurarCampoAction(ws: string, board: string, fieldId: string) {
+  return comBoard(ws, board, (a) => restaurarCampo(a, fieldId));
+}
+
+export async function salvarCondicionaisAction(ws: string, board: string, lista: unknown) {
+  return comBoard(ws, board, (a) => salvarCondicionais(a, lista));
 }

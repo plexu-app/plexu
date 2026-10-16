@@ -48,5 +48,33 @@ for (const tema of ["light", "dark"] as const) {
       await page.getByTestId("titulo-card").waitFor();
       await capturar(page, "b-card-aberto", tema);
     });
+
+    test("C: config de fase", async ({ page }) => {
+      await page.goto("/w/demo/b/pedidos/settings?aba=fases");
+      await page.locator("[data-campo-formulario]").first().waitFor();
+      await capturar(page, "c-config-fase", tema);
+    });
+
+    test("C: editor de campo", async ({ page }) => {
+      await page.goto("/w/demo/b/pedidos/settings");
+      const ref = page.locator('[data-campo-formulario="Referência"]');
+      await ref.hover();
+      await ref.getByRole("button", { name: "Editar Referência" }).click();
+      await page.locator("[data-editor-campo]").waitFor();
+      await capturar(page, "c-editor-campo", tema);
+    });
+
+    test("C: lista de automações", async ({ page }) => {
+      await page.goto("/w/demo/b/pedidos/automacoes");
+      await page.locator("[data-automacao]").first().waitFor();
+      await capturar(page, "c-automacoes", tema);
+    });
+
+    test("C: editor de automação", async ({ page }) => {
+      await page.goto("/w/demo/b/pedidos/automacoes");
+      await page.locator("[data-automacao] a").first().click();
+      await page.locator("[data-editor-automacao]").waitFor();
+      await capturar(page, "c-editor-automacao", tema);
+    });
   });
 }

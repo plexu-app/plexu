@@ -14,6 +14,7 @@ export function Menu({
   alinhar = "start",
   className,
   rotulo,
+  fecharAoClicar = true,
 }: {
   /** Renderiza o botão que abre o painel; recebe as props de acessibilidade e o clique. */
   gatilho: (p: { "aria-expanded": boolean; "aria-controls": string; "aria-haspopup": "dialog"; onClick: () => void }) => React.ReactNode;
@@ -22,6 +23,8 @@ export function Menu({
   className?: string;
   /** Nome acessível do painel. */
   rotulo: string;
+  /** Fecha ao clicar num item (link ou botão). false: painéis com controles internos (ex.: ordenar colunas). */
+  fecharAoClicar?: boolean;
 }) {
   const [aberto, setAberto] = useState(false);
   const id = useId();
@@ -31,14 +34,17 @@ export function Menu({
     const fora = (e: PointerEvent) => {
       if (raiz.current && !raiz.current.contains(e.target as Node)) setAberto(false);
     };
+    // Esc fecha só o menu: na captura da janela, antes do Dialog do Radix (que fecharia o modal em volta).
     const esc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setAberto(false);
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      setAberto(false);
     };
     document.addEventListener("pointerdown", fora);
-    document.addEventListener("keydown", esc);
+    window.addEventListener("keydown", esc, true);
     return () => {
       document.removeEventListener("pointerdown", fora);
-      document.removeEventListener("keydown", esc);
+      window.removeEventListener("keydown", esc, true);
     };
   }, [aberto]);
   return (
@@ -49,6 +55,9 @@ export function Menu({
           id={id}
           role="dialog"
           aria-label={rotulo}
+          onClick={(e) => {
+            if (fecharAoClicar && (e.target as HTMLElement).closest("a, button:not([type=submit])")) setAberto(false);
+          }}
           className={cn(
             "absolute top-full z-40 mt-1 min-w-48 rounded border border-line bg-paper p-1 text-[13px] text-ink",
             alinhar === "end" ? "right-0" : "left-0",

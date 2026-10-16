@@ -281,6 +281,7 @@ function EscolherColunas({
     <Menu
       rotulo="Colunas da lista"
       alinhar="end"
+      fecharAoClicar={false}
       className="w-80"
       gatilho={(p) => (
         <Button {...p} size="sm" variant="outline">

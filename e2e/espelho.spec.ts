@@ -25,7 +25,7 @@ test("espelho editável: modal em linguagem de usuário, motivo quando não edit
 
   // Modal do campo: relação, campo de origem por nome, "Vem de" e os três modos
   await page.goto("/w/demo/b/pedidos/settings?aba=campos");
-  await page.getByRole("button", { name: "Novo campo" }).click();
+  await page.getByRole("button", { name: "Adicionar campo Valor de card relacionado" }).click();
   const modal = page.getByRole("dialog", { name: "Novo campo" });
   await modal.getByLabel("Nome do campo").fill(nome);
   await modal.getByLabel("Tipo do campo").selectOption({ label: "Valor de card relacionado" });
@@ -75,6 +75,9 @@ test("espelho editável: modal em linguagem de usuário, motivo quando não edit
   await page.goBack();
   await salvar(CNPJ_AURORA);
   await page.goto("/w/demo/b/pedidos/settings?aba=campos");
-  await page.getByRole("button", { name: `Arquivar ${nome}` }).click();
+  page.once("dialog", (d) => d.accept()); // confirmação de arquivar
+  await page.locator(`[data-campo-formulario="${nome}"]`).hover();
+  await page.getByRole("button", { name: `Mais opções de ${nome}` }).click();
+  await page.getByRole("dialog", { name: `Opções do campo ${nome}` }).getByRole("button", { name: "Arquivar" }).click();
   await expect(page.getByText("Campo arquivado")).toBeVisible();
 });

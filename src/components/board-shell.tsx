@@ -91,9 +91,8 @@ export function BoardShell({
   const abrir = useCallback((faseId: string | null) => setFaseAberta(fases.find((f) => f.id === faseId) ?? fases[0] ?? null), [fases]);
 
   const fluxo = kind === "workflow" && numFases > 0;
-  const naConfig = atual.startsWith(`${base}/settings`);
-  const abaConfig = params.get("aba") ?? "";
-  const emAutomacoes = naConfig && ["automacoes", "acoes", "execucoes"].includes(abaConfig);
+  const emAutomacoes = atual.startsWith(`${base}/automacoes`);
+  const naConfig = atual.startsWith(`${base}/settings`) || emAutomacoes;
   const naLista = atual.startsWith(`${base}/table`) || (atual.startsWith(`${base}/c/`) && (params.get("v") === "tabela" || !fluxo));
   const visoes = [...(fluxo ? [{ href: base, rotulo: "Kanban", ativa: !naConfig && !naLista }] : []), { href: `${base}/table`, rotulo: "Lista", ativa: !naConfig && naLista }];
 
@@ -197,7 +196,7 @@ export function BoardShell({
           </Link>
           {podeConfigurar && (
             <Link
-              href={`${base}/settings?aba=automacoes`}
+              href={`${base}/automacoes`}
               aria-current={emAutomacoes ? "page" : undefined}
               className={cn("rounded px-3 py-1.5 text-[13px] text-ink-2 hover:bg-bg hover:text-ink", emAutomacoes && "bg-bg font-medium text-ink")}
             >
@@ -225,7 +224,7 @@ export function BoardShell({
           </Menu>
           {podeConfigurar && (
             <Button asChild variant="ghost" className="ml-auto" aria-label="Configurações do board">
-              <Link href={`${base}/settings`} aria-current={naConfig && !emAutomacoes ? "page" : undefined}>
+              <Link href={`${base}/settings`} aria-current={atual.startsWith(`${base}/settings`) ? "page" : undefined}>
                 <Settings /> Configurar
               </Link>
             </Button>
