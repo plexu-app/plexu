@@ -15,7 +15,7 @@ test("pedido com anexo obrigatório: upload, remover, criar, baixar e anexar pel
   await page.waitForURL(/\/w\/demo$/);
 
   await page.goto("/w/demo/b/pedidos");
-  await page.getByRole("button", { name: "Novo cartão", exact: true }).click();
+  await page.getByRole("button", { name: "Criar novo cartão" }).click();
   const modal = page.getByRole("dialog", { name: "Novo cartão" });
   await modal.getByLabel("Referência").fill("Pedido com anexo (e2e)");
   const comprovante = modal.locator('[data-campo-novo="Comprovante do pedido"]');

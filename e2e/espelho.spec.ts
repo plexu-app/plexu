@@ -40,7 +40,7 @@ test("espelho editável: modal em linguagem de usuário, motivo quando não edit
 
   // Pedido novo, sem cliente: somente leitura com o motivo
   await page.goto("/w/demo/b/pedidos");
-  await page.getByRole("button", { name: "Novo cartão", exact: true }).click();
+  await page.getByRole("button", { name: "Criar novo cartão" }).click();
   const novo = page.getByRole("dialog", { name: "Novo cartão" });
   await novo.getByLabel("Referência").fill("Pedido com espelho (e2e)");
   await novo.getByLabel("Contato").fill("Compras Espelho");

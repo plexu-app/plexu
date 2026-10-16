@@ -32,6 +32,7 @@ import {
   editarRegra,
   moverFase,
   type DadosCampo,
+  type DadosFase,
   type DadosRegra,
 } from "@/server/config-board";
 
@@ -56,7 +57,7 @@ async function comBoard(ws: string, board: string, fn: (a: { wsId: string; board
 export async function criarFaseAction(ws: string, board: string, nome: string) {
   return comBoard(ws, board, (a) => criarFase(a, nome));
 }
-export async function atualizarFaseAction(ws: string, board: string, faseId: string, dados: { nome?: string; terminal?: boolean; cor?: string | null }) {
+export async function atualizarFaseAction(ws: string, board: string, faseId: string, dados: DadosFase) {
   return comBoard(ws, board, (a) => atualizarFase(a, faseId, dados));
 }
 export async function moverFaseAction(ws: string, board: string, faseId: string, direcao: -1 | 1) {

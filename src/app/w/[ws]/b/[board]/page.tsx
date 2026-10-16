@@ -1,12 +1,15 @@
 import { redirect } from "next/navigation";
-import { exigirBoard, exigirMembro } from "@/server/acesso";
+import { lerFiltros } from "@/lib/filtros";
+import { exigirBoard, exigirMembro, podeConfigurar } from "@/server/acesso";
 import { VistaKanban } from "./_views/vistas";
 
-export default async function PaginaBoard({ params }: { params: Promise<{ ws: string; board: string }> }) {
+type Busca = Promise<Record<string, string | string[] | undefined>>;
+
+export default async function PaginaBoard({ params, searchParams }: { params: Promise<{ ws: string; board: string }>; searchParams: Busca }) {
   const { ws, board } = await params;
   const ctx = await exigirMembro(ws);
   const b = await exigirBoard(ctx, board);
-  // Base (sem fases) abre na tabela.
+  // Base (sem fases) abre na lista.
   if (b.kind !== "workflow" || !b.fases.length) redirect(`/w/${ws}/b/${b.slug}/table`);
-  return <VistaKanban ws={ws} wsId={ctx.ws.id} board={b} />;
+  return <VistaKanban ws={ws} wsId={ctx.ws.id} board={b} filtros={lerFiltros(await searchParams)} podeConfigurar={podeConfigurar(ctx)} />;
 }

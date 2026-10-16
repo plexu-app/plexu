@@ -37,7 +37,7 @@ export default async function Configuracoes({
   searchParams,
 }: {
   params: Promise<{ ws: string; board: string }>;
-  searchParams: Promise<{ aba?: string; automacao?: string; acao?: string; status?: string }>;
+  searchParams: Promise<{ aba?: string; automacao?: string; acao?: string; status?: string; fase?: string }>;
 }) {
   const { ws, board } = await params;
   const ctx = await exigirMembro(ws);
@@ -58,7 +58,7 @@ export default async function Configuracoes({
   const aba: Aba = abas.some((a) => a.id === pedida) ? pedida! : abas[0].id;
 
   const d = await dadosConfiguracao(ctx.ws.id, b.id);
-  const fases = b.fases.map((f) => ({ id: f.id, name: f.name, isTerminal: f.isTerminal, color: f.color }));
+  const fases = b.fases.map((f) => ({ id: f.id, name: f.name, isTerminal: f.isTerminal, color: f.color, allowCreate: f.allowCreate, sla: f.sla, descricao: f.descricao }));
   const condicoes = camposCondicao(b);
   // Campos do card do outro lado de cada relação (board alvo, ou o board da relação que aponta para cá).
   const camposDe = (boardId: string) => d.camposWs.filter((c) => c.boardId === boardId).map(({ slug, name, type }) => ({ slug, name, type }));
@@ -88,7 +88,7 @@ export default async function Configuracoes({
           </Link>
         ))}
       </nav>
-      {aba === "fases" && <ConfigFases ws={ws} board={b.slug} fases={fases} />}
+      {aba === "fases" && <ConfigFases ws={ws} board={b.slug} fases={fases} aberta={sp.fase} />}
       {aba === "campos" && (
         <>
           <ConfigCampos

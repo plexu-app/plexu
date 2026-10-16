@@ -30,7 +30,7 @@ test("pedido com 2 itens: enviar sem separar é bloqueado; depois de separar, en
   await page.waitForURL(/\/b\/pedidos$/);
 
   // Criar cartão = formulário da fase inicial (modal); vazio é recusado
-  await page.getByRole("button", { name: "Novo cartão", exact: true }).click();
+  await page.getByRole("button", { name: "Criar novo cartão" }).click();
   const modal = page.getByRole("dialog");
   await expect(modal.getByText("Fase: Novo")).toBeVisible();
   await modal.getByRole("button", { name: "Criar cartão" }).click();

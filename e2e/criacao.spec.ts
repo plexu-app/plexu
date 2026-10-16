@@ -17,7 +17,7 @@ async function entrar(page: Page) {
 test("modal de criação: campo condicional aparece e passa a ser obrigatório conforme o preenchimento", async ({ page }) => {
   await entrar(page);
   await page.goto("/w/demo/b/pedidos");
-  await page.getByRole("button", { name: "Novo cartão", exact: true }).click();
+  await page.getByRole("button", { name: "Criar novo cartão" }).click();
   const modal = page.getByRole("dialog", { name: "Novo cartão" });
 
   const janela = modal.locator('[data-campo-novo="Janela de entrega"]');
@@ -44,7 +44,7 @@ test("modal de criação: campo condicional aparece e passa a ser obrigatório c
 test("sub-tabela: sem cobertura dos obrigatórios, Adicionar abre o formulário completo já vinculado ao pai", async ({ page }) => {
   await entrar(page);
   await page.goto("/w/demo/b/pedidos");
-  await page.getByRole("button", { name: "Novo cartão", exact: true }).click();
+  await page.getByRole("button", { name: "Criar novo cartão" }).click();
   const novo = page.getByRole("dialog", { name: "Novo cartão" });
   await novo.getByLabel("Referência").fill("Pedido com entrega (e2e)");
   await anexarComprovante(novo);
@@ -75,7 +75,7 @@ test("sub-tabela: sem cobertura dos obrigatórios, Adicionar abre o formulário 
 test("modal de criação: relação N:1 com busca; obrigatório faltando é destacado e recebe foco", async ({ page }) => {
   await entrar(page);
   await page.goto("/w/demo/b/pedidos");
-  await page.getByRole("button", { name: "Novo cartão", exact: true }).click();
+  await page.getByRole("button", { name: "Criar novo cartão" }).click();
   const modal = page.getByRole("dialog", { name: "Novo cartão" });
 
   // Relação N:1 (um card) aparece no formulário; 1:N (Itens, Entregas) fica para depois de criar
@@ -117,7 +117,7 @@ test("formato (regex): erro abaixo do campo com a mensagem configurada, ajuda se
   await configurar("^[A-Z]+$", "Use só letras maiúsculas, sem espaços.", "Nome curto do contato.");
   try {
     await page.goto("/w/demo/b/pedidos");
-    await page.getByRole("button", { name: "Novo cartão", exact: true }).click();
+    await page.getByRole("button", { name: "Criar novo cartão" }).click();
     const modal = page.getByRole("dialog", { name: "Novo cartão" });
     const contato = modal.locator('[data-campo-novo="Contato"]');
     await modal.getByLabel("Referência").fill("Pedido com formato (e2e)");

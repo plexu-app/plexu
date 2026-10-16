@@ -1,11 +1,17 @@
 import Image from "next/image";
 import marca from "../../brand/plexu-mark.svg";
+import marcaBranca from "../../brand/plexu-mark-white.svg";
 import logoClaro from "../../brand/plexu-logo-light.svg";
 import logoEscuro from "../../brand/plexu-logo-dark.svg";
 
-/** Só o símbolo (sidebar recolhida, telas de entrada). */
+/** Só o símbolo (sidebar recolhida, telas de entrada): escuro no tema claro, branco no escuro. */
 export function Marca({ tamanho = 28 }: { tamanho?: number }) {
-  return <Image src={marca} alt="Plexu" width={tamanho} height={tamanho} priority />;
+  return (
+    <>
+      <Image src={marca} alt="Plexu" width={tamanho} height={tamanho} priority className="dark:hidden" />
+      <Image src={marcaBranca} alt="Plexu" width={tamanho} height={tamanho} priority className="hidden dark:block" />
+    </>
+  );
 }
 
 /** Logo completo, um arquivo por tema (docs/DESIGN.md): claro no tema claro, escuro no escuro. */

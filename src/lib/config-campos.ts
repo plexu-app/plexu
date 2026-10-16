@@ -127,6 +127,8 @@ function normalizarPorTipo(tipo: string, bruto: unknown, ctx: ContextoConfig): R
           cardinality: cardinalidade,
           exclusive: r.exclusive === true,
           is_parent: r.is_parent === true,
+          // "Mostrar no card": o card relacionado aparece no sub-rodapé do cartão do kanban (só N:1).
+          ...(r.show_on_card === true && cardinalidade === "one" ? { show_on_card: true } : {}),
           ...(texto(r.inverse_name) ? { inverse_name: texto(r.inverse_name) } : {}),
           ...(texto(r.filter_expr) ? { filter_expr: texto(r.filter_expr) } : {}),
           ...(lock.length ? { lock_fields_while_linked: lock } : {}),

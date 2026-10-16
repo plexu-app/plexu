@@ -39,11 +39,17 @@ export interface FaseUI {
   position: number;
   isTerminal: boolean;
   color: string | null;
+  /** Fase aceita criar card direto nela (além da primeira, que sempre aceita: é o formulário inicial). */
+  allowCreate: boolean;
+  /** phases.sla ({duration, unit}); passou dele, o "tempo na fase" do cartão fica laranja. */
+  sla: unknown;
+  /** phases.settings.description: mostrada na fase vazia e no topo do formulário da fase. */
+  descricao: string | null;
 }
 
 /** Preferências de exibição guardadas em boards.settings. */
 export interface SettingsBoard {
-  /** Até 3 campos mostrados no cartão do kanban. */
+  /** Até 8 campos mostrados no cartão do kanban, na ordem (padrão: os 6 primeiros campos curtos). */
   kanban_fields?: string[];
   /** Campo de data usado como prazo no cartão (além de cards.due_at). */
   kanban_due_field?: string | null;
@@ -73,6 +79,7 @@ export interface CardResumo {
   assignees: string[];
   dueAt: Date | null;
   phaseEnteredAt: Date | null;
+  createdAt: Date;
 }
 
 // ---------------------------------------------------------------------------
@@ -197,7 +204,16 @@ async function completar(b: typeof boards.$inferSelect): Promise<BoardCompleto> 
     kind: b.kind,
     titleFieldId: b.titleFieldId,
     settings: (b.settings ?? {}) as SettingsBoard,
-    fases: ps.map((p) => ({ id: p.id, name: p.name, position: p.position, isTerminal: p.isTerminal, color: p.color })),
+    fases: ps.map((p) => ({
+      id: p.id,
+      name: p.name,
+      position: p.position,
+      isTerminal: p.isTerminal,
+      color: p.color,
+      allowCreate: p.allowCreate,
+      sla: p.sla,
+      descricao: String((p.settings as { description?: unknown } | null)?.description ?? "").trim() || null,
+    })),
     campos: fs.map(campoUI),
   };
 }
@@ -234,6 +250,7 @@ const colunasResumo = {
   assignees: cards.assignees,
   dueAt: cards.dueAt,
   phaseEnteredAt: cards.phaseEnteredAt,
+  createdAt: cards.createdAt,
 };
 
 export async function cardsDoBoard(boardId: string, limite = 2000): Promise<CardResumo[]> {
@@ -398,4 +415,23 @@ export async function titulosDeCards(ids: string[]) {
 export async function saudeDoBanco(): Promise<string> {
   const [{ now }] = await db.execute<{ now: string }>(sql`select now()::text as now`);
   return now;
+}
+
+/** Boards ligados a este por relação: alvos das relações dele e boards com relação apontando para ele. */
+export async function boardsConectados(wsId: string, b: BoardCompleto): Promise<string[]> {
+  const alvos = b.campos.filter((c) => c.type === "relation").map((c) => String((c.config.relation as { target_board?: string } | undefined)?.target_board ?? ""));
+  const entrando = await db
+    .select({ boardId: fields.boardId })
+    .from(fields)
+    .innerJoin(boards, eq(boards.id, fields.boardId))
+    .where(
+      and(
+        eq(boards.workspaceId, wsId),
+        eq(fields.type, "relation"),
+        isNull(fields.archivedAt),
+        isNull(boards.archivedAt),
+        sql`${fields.config}->'relation'->>'target_board' = ${b.id}`,
+      ),
+    );
+  return [...new Set([...alvos, ...entrando.map((e) => e.boardId)])].filter((id) => id && id !== b.id);
 }

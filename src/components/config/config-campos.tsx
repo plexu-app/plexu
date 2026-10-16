@@ -722,6 +722,11 @@ function ConfigPorTipo({
             <label className="flex items-center gap-1.5">
               <input type="checkbox" className="size-4" checked={r.is_parent === true} onChange={(e) => upd("is_parent", e.target.checked)} /> o card escolhido é o pai deste
             </label>
+            {r.cardinality === "one" && (
+              <label className="flex items-center gap-1.5">
+                <input type="checkbox" className="size-4" checked={r.show_on_card === true} onChange={(e) => upd("show_on_card", e.target.checked)} /> Mostrar no card (kanban)
+              </label>
+            )}
           </div>
           {ctx.campos.length > 0 && (
             <div className={`${linha} col-span-2`}>

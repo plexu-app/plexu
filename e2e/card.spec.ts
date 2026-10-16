@@ -22,7 +22,7 @@ test("card em 3 colunas: relações no formulário, inversas em Relacionados, fa
   await page.setViewportSize({ width: 1400, height: 900 });
   await entrar(page);
   await page.goto("/w/demo/b/pedidos");
-  await page.getByRole("button", { name: "Novo cartão", exact: true }).click();
+  await page.getByRole("button", { name: "Criar novo cartão" }).click();
   const novo = page.getByRole("dialog", { name: "Novo cartão" });
   await novo.getByLabel("Referência").fill("Pedido em 3 colunas (e2e)");
   await novo.getByLabel("Contato").fill("Compras Colunas");

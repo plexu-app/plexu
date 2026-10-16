@@ -77,7 +77,7 @@ async function fluxo(page: Page, { sufixo, nomeAuto, nomeAcao, objeto }: { sufix
 
   // 3. Criar um card: o worker despacha o evento e a automação comenta
   await page.goto("/w/demo/b/pedidos");
-  await page.getByRole("button", { name: "Novo cartão", exact: true }).click();
+  await page.getByRole("button", { name: "Criar novo cartão" }).click();
   const novo = page.getByRole("dialog", { name: "Novo cartão" });
   await novo.getByLabel("Referência").fill(objeto);
   await novo.getByLabel("Contato").fill("Compras Automação");

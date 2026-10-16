@@ -63,20 +63,54 @@ async function faseDoBoard(tx: Tx, a: Alvo, faseId: string) {
   return f;
 }
 
-export async function atualizarFase(a: Alvo, faseId: string, dados: { nome?: string; terminal?: boolean; cor?: string | null }) {
+export interface DadosFase {
+  nome?: string;
+  terminal?: boolean;
+  cor?: string | null;
+  /** phases.settings.description: aparece na fase vazia e no topo do formulário da fase. */
+  descricao?: string | null;
+  /** allow_create: criar card direto nesta fase (a primeira sempre aceita). */
+  permiteCriar?: boolean;
+  /** SLA da fase: passou dele, o "tempo na fase" do cartão fica laranja. null remove. */
+  sla?: { duration: number; unit: "minutes" | "hours" | "days" } | null;
+}
+
+/** SLA validado ou erro: inteiro de 1 a 10.000 em minutos, horas ou dias. */
+function slaValido(sla: DadosFase["sla"]) {
+  if (sla === null || sla === undefined) return sla;
+  const n = Number(sla.duration);
+  if (!Number.isInteger(n) || n < 1 || n > 10_000) throw new ErroConfig("SLA: use um número inteiro de 1 a 10.000");
+  if (!["minutes", "hours", "days"].includes(sla.unit)) throw new ErroConfig("SLA: unidade inválida");
+  return { duration: n, unit: sla.unit };
+}
+
+export async function atualizarFase(a: Alvo, faseId: string, dados: DadosFase) {
   return db.transaction(async (tx) => {
     const f = await faseDoBoard(tx, a, faseId);
     const nome = dados.nome?.trim();
     if (dados.nome !== undefined && !nome) throw new ErroConfig("nome da fase obrigatório");
     // Cor de fase: token do design (f1..f5) ou #rrggbb.
     if (dados.cor && !/^(#[0-9a-f]{6}|f[1-5])$/i.test(dados.cor)) throw new ErroConfig("cor inválida (use f1..f5 ou #rrggbb)");
+    const descricao = dados.descricao === undefined ? undefined : (dados.descricao ?? "").trim().slice(0, 500);
+    const sla = slaValido(dados.sla);
+    const settings = { ...((f.settings as Record<string, unknown>) ?? {}) };
+    if (descricao !== undefined) {
+      if (descricao) settings.description = descricao;
+      else delete settings.description;
+    }
     const novo = {
       name: nome ?? f.name,
       isTerminal: dados.terminal ?? f.isTerminal,
       color: dados.cor === undefined ? f.color : dados.cor || null,
+      allowCreate: dados.permiteCriar ?? f.allowCreate,
+      sla: sla === undefined ? f.sla : sla,
+      settings,
     };
     await tx.update(phases).set(novo).where(eq(phases.id, f.id));
-    await registrar(tx, a, "phase", "updated", f.id, { antes: { name: f.name, is_terminal: f.isTerminal, color: f.color }, depois: novo });
+    await registrar(tx, a, "phase", "updated", f.id, {
+      antes: { name: f.name, is_terminal: f.isTerminal, color: f.color, allow_create: f.allowCreate, sla: f.sla, settings: f.settings },
+      depois: { name: novo.name, is_terminal: novo.isTerminal, color: novo.color, allow_create: novo.allowCreate, sla: novo.sla, settings: novo.settings },
+    });
   });
 }
 
@@ -451,11 +485,11 @@ export async function dadosConfiguracao(wsId: string, boardId: string) {
 // Exibição do board (boards.settings)
 // ---------------------------------------------------------------------------
 
-/** Campos do cartão do kanban (até 3) e campo de prazo. Mescla em boards.settings. */
+/** Campos do cartão do kanban (até 8, na ordem) e campo de prazo. Mescla em boards.settings. */
 export async function definirExibicaoKanban(a: Alvo, dados: { campos: string[]; prazo: string | null }) {
   return db.transaction(async (tx) => {
     const b = await exigirBoardDoWs(tx, a);
-    const campos = [...new Set(dados.campos)].slice(0, 3);
+    const campos = [...new Set(dados.campos)].slice(0, 8);
     const doBoard = await tx.select({ id: fields.id, type: fields.type }).from(fields).where(and(eq(fields.boardId, a.boardId), isNull(fields.archivedAt)));
     for (const id of campos) if (!doBoard.some((f) => f.id === id)) throw new ErroConfig("campo do cartão não pertence ao board");
     if (dados.prazo && !doBoard.some((f) => f.id === dados.prazo && (f.type === "date" || f.type === "datetime"))) {
