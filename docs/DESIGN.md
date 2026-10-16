@@ -48,6 +48,7 @@ Derivados (fora do mockup, necessários ao app):
 | `--err-ink` | `#fff` | `#fff` | texto sobre `--err` (botão destrutivo) |
 | `--on-cor` | `#fff` | `#fff` | texto sobre cor de fase (avatar) |
 | `--scrim` | `rgb(21 23 28 / .32)` | `rgb(0 0 0 / .55)` | véu atrás de modais |
+| `--veu` | `rgb(21 23 28 / .6)` | `rgb(0 0 0 / .6)` | véu do card aberto e das configurações (`--ink` a 60%; no escuro, preto) |
 
 ### No Tailwind
 
@@ -55,7 +56,7 @@ O projeto usa Tailwind v4, sem `tailwind.config`: o mapeamento fica no bloco `@t
 
 - `bg-bg`, `bg-paper`, `text-ink`, `text-ink-2`, `text-ink-3`, `border-line`, `border-line-2`
 - `bg-accent`, `text-accent-ink`, `bg-accent-soft`, `text-accent`
-- `text-ok`, `bg-ok-soft`, `text-warn`, `bg-warn-soft`, `text-err`, `bg-err-soft`, `text-err-ink`, `text-on-cor`, `bg-scrim`
+- `text-ok`, `bg-ok-soft`, `text-warn`, `bg-warn-soft`, `text-err`, `bg-err-soft`, `text-err-ink`, `text-on-cor`, `bg-scrim`, `bg-veu`
 - `bg-f1` … `bg-f5`
 
 Todos os `rounded-*` resolvem para `var(--r)`. Os nomes legados do shadcn/ui (`bg-background`, `text-muted-foreground`, `border-input`, `bg-primary`…) apontam para os tokens, para que telas antigas acompanhem o tema. Código novo usa os nomes dos tokens.
@@ -83,42 +84,48 @@ Todos os `rounded-*` resolvem para `var(--r)`. Os nomes legados do shadcn/ui (`b
 
 ## Medidas das peças
 
+A estrutura das telas segue `docs/design/prompt-redesign-pr2.md` (paridade com a referência de mercado); a pele (fontes, tokens, linhas de 1px) é a deste documento. Os e2e `paridade-a`, `card` e `paridade-c` conferem as medidas com `getBoundingClientRect`.
+
 - **Sidebar:**
-  - 232px de largura (56px recolhida), fundo `--bg`, borda direita.
-  - Logo do tema: `brand/plexu-logo-light.svg` ou `brand/plexu-logo-dark.svg`.
+  - 232px de largura (56px recolhida), fundo `--bg`, borda direita. Sem escolha salva, começa recolhida em telas com menos de 1600px.
+  - Logo do tema: `brand/plexu-logo-light.svg` ou `brand/plexu-logo-dark.svg`; recolhida, a marca (branca no escuro).
   - Grupos "Fluxos" e "Bases" com `.rotulo`. Itens de 32px com o marcador de cor do board.
   - Item ativo: fundo `--paper`, borda, peso 600.
   - Rodapé: usuário, workspace e tema.
-- **Cabeçalho do board:**
-  - 56px de altura, fundo `--paper`, borda inferior.
-  - Nome em 18px/600, seguido do contador mono ("8 cartões").
-  - Abas de visualização (a ativa em `--ink` sobre `--paper`), busca de 240px, "Configurar" (ghost) e "+ Novo cartão" (primário, 32px).
-- **Controles:** inputs, selects e botões com 32px de altura (`h-8`), borda `--line` e foco com borda `--accent`.
+- **Cabeçalho do board, em três faixas:**
+  - Global, 56px, padding 0 24px: ícone do board na cor dele, nome (clique = informações), ajuda e conta.
+  - Contexto, 48px: Fluxo · Automações · Conexões ▾ e, à direita, Configurar.
+  - Visões, 48px: abas de 40px (padding 12px 16px, 12px entre elas; ativa em `--accent` com sublinhado de 2px), busca em pill de 232px, filtro e recolher. Recolher esconde contexto e visões (persistido, aplicado antes da pintura).
+- **Controles:** inputs, selects e botões com 32px de altura (`h-8`), borda `--line` e foco com borda `--accent`. No card aberto, inputs de 40px.
+- **Menu suspenso** (`ui/menu.tsx`): fecha ao escolher um item, no clique fora e no Esc (o Esc não fecha o modal em volta).
 - **Kanban:**
-  - Colunas de 300px com 12px entre elas, sem borda.
-  - Cabeçalho da coluna em `--paper`: barra de 3px na cor da fase, "01. Nome" em 13.5px/600, contador mono, ✓ na fase final e "+".
-  - Coluna vazia: caixa tracejada.
+  - Área em `--bg`, borda superior de 1px, padding-left 24px.
+  - Fase de 280px com margem superior de 16px; cards de 256px (12px de respiro de cada lado).
+  - Cabeçalho da fase com 40px, `--paper`, borda `--line`, barra de 3px na cor da fase (borda, não sombra), "01. Nome" em 13.5px/600 com reticências, contador mono; configurar e ⋯ só no hover; "+" na primeira fase e nas com `allow_create`; ícone de arquivo na fase final.
+  - 15 cards por fase e o resto ao rolar; o contador vem de `count(*)`.
+  - Fase vazia: a descrição da fase (ou "Nenhum cartão nesta fase.") em caixa tracejada.
+  - Botão flutuante "Criar novo cartão": pill de 40px no canto inferior esquerdo.
 - **Cartão:**
-  - Fundo `--paper`, borda 1px `--line`, padding 10px 12px 8px, 8px entre linhas.
-  - Seleções viram etiqueta (mono 10px, `--accent-soft`).
-  - Título em 14px/600.
-  - Até 3 campos em grade de rótulo (mono 10px) e valor (13px).
-  - Rodapé com borda `--line-2`: avatar de 20px, prazo relativo ("vence em 5d"; em `--err` se vencido; "concluído" na fase final) e tempo na fase.
-- **Arrastar:** o cartão arrastado ganha borda `--accent` e a coluna-alvo fica em `--paper`. A fase bloqueada por regra (`can_enter`) mostra borda tracejada e o motivo, em tooltip e nota. Sem rotação nem escala.
+  - Fundo `--paper`, borda 1px `--line`, raio 4px, padding 12px 12px 12px 8px, 8px entre cartões.
+  - Título em 14px/600, altura de linha 20px, até 4 linhas.
+  - Até 8 campos (padrão 6): ícone do tipo de 16px, rótulo de 10px em caixa-alta `--ink-3` e valor de 12px abaixo; seleções em chip cinza.
+  - Rodapé em 10px/600: avatar, prazo relativo, comentários e anexos (se houver) e os tempos no fluxo, na fase (laranja passado o SLA, vermelho passado o prazo) e desde a atualização.
+  - Sub-rodapé: relações N:1 marcadas "mostrar no card", com o nome do board e o card em chip na cor do board.
+- **Arrastar:** o cartão arrastado ganha borda `--accent` e a coluna-alvo fica em `--paper`. A fase bloqueada por regra mostra contorno tracejado e o motivo, em tooltip e nota. Sem rotação nem escala.
+- **Lista:** cabeçalho fixo, linhas de 40px virtualizadas, páginas de 50; colunas escolhidas e ordenadas no botão Colunas.
+- **Card aberto:** modal centrado a 8px do viewport, até 1440px, raio 12px, véu `--veu`. Colunas de 564px (rolagem própria, 32px à esquerda), 564px (rolagem própria, borda esquerda) e 276px (fixa, borda esquerda). Abas em pill de 24px (padding 4px 8px). "Mover card para fase" em pills de 34px na cor da fase (fundo a 10%, borda a 35%, texto misturado com `--ink`). Ações do topo redondas de 32px.
+- **Configurações do board:** modal até 1440px, raio 12px; paleta de tipos com 270px e botões de 32px; prévia do formulário num cartão de 520px sobre a cor da fase a 10%; editor de campo de 760px; condicionais em campos em modal de 520px.
+- **Automações:** lista em cards até 1100px com grade de 4 colunas (evento, ação, atualizado em, atualizado por); editor com os painéis Evento → Ação lado a lado, ligados por um conector, e "Salvar automação" na largura do painel de ação.
 
-### Onde o app difere do mockup (decidido)
+### Onde o app difere da referência (decidido)
 
-- O cartão mostra até 3 campos, não 4. O limite vem da configuração do cartão do board.
-- O fundo do board é `--bg`, não `--paper`, para que a coluna-alvo em `--paper` se destaque durante o arraste.
-- O contador de cartões fica no cabeçalho do board.
-- Ainda não existem no app:
-  - busca global na sidebar (⌘K);
-  - visão Calendário;
-  - linha de conexões no cartão;
-  - rótulo do botão por board ("Nova entrega"). O app usa "Novo cartão".
+- Etiquetas (labels) não existem no modelo: o cartão e a lista não as mostram.
+- Notificações, "Compartilhar formulário" e as visões Formulário e Relatórios não existem no produto e não aparecem no cabeçalho.
+- O fundo do board é `--bg` e a faixa da fase é borda (não `box-shadow`): sem sombras.
+- Ainda não existem no app: busca global na sidebar (⌘K), visão Calendário, permissões por fase, envio de e-mail pelo card.
 
 ## Conferir
 
 - `pnpm lint`: inclui a checagem de design.
-- `CAPTURAS=1 pnpm e2e visual`: grava as capturas em `e2e/__screenshots__/` (kanban claro e escuro, sidebar recolhida, modal) para comparar com o mockup.
+- `CAPTURAS=1 E2E_PORT=3300 pnpm e2e visual`: grava as capturas de kanban, lista, card aberto, configurações e automações, em claro e escuro, em `e2e/__screenshots__/pr2/`.
 - `e2e/tema.spec.ts`: o tema segue o sistema, a escolha persiste depois de recarregar e o `<body>` já nasce com o tema certo.

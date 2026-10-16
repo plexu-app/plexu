@@ -6,6 +6,7 @@
 // Cards de exemplo passam pelo core, com datas relativas a hoje.
 //   pnpm db:seed            cria o demo se não existir
 //   pnpm db:seed --reset    exclui o demo (como a exclusão pela UI) e cria de novo
+//   pnpm db:seed --carga[=N] (só para medir) workspace "carga" com N cards genéricos (padrão 5.000) num board
 import { and, eq } from "drizzle-orm";
 import { db } from "./index";
 import { attachments, automations, boards, cards, fieldPhaseSettings, fields, phases, rules, users, workspaceMembers, workspaces } from "./schema";
@@ -38,23 +39,83 @@ function cnpj(base: string): string {
  * ligações, comentários, anexos e automações saem; os eventos ficam (append-only), marcados como de
  * workspace excluído, e o slug "demo" é liberado. Depois do commit, apaga os arquivos dos anexos.
  */
-async function excluirDemo(ws: { id: string; name: string }) {
+async function excluirDemo(ws: { id: string; name: string }, slug = "demo") {
   const [dono] = await db
     .select({ id: workspaceMembers.userId })
     .from(workspaceMembers)
     .where(and(eq(workspaceMembers.workspaceId, ws.id), eq(workspaceMembers.orgRole, "owner")))
     .limit(1);
   const donoId = dono?.id;
-  if (!donoId) throw new Error("seed --reset: o workspace 'demo' não tem owner; não há quem o exclua.");
+  if (!donoId) throw new Error(`seed: o workspace '${slug}' não tem owner; não há quem o exclua.`);
   const r = await excluirWorkspace({ workspaceId: ws.id, actor: { type: "user", id: donoId }, confirmacao: ws.name });
   const armazenamento = new ArmazenamentoDisco(diretorioAnexos());
   let falhas = 0;
   for (const chave of r.chavesAnexos) await armazenamento.remover(chave).catch(() => falhas++);
   const { boards: b, cards: c, anexos } = r.removidos;
-  console.log(`seed: workspace 'demo' excluído (${b} boards, ${c} cards, ${anexos} anexos${falhas ? `; ${falhas} arquivo(s) não removido(s) do disco` : ""}).`);
+  console.log(`seed: workspace '${slug}' excluído (${b} boards, ${c} cards, ${anexos} anexos${falhas ? `; ${falhas} arquivo(s) não removido(s) do disco` : ""}).`);
+}
+
+/**
+ * --carga[=N]: workspace "carga" (recriado a cada execução) com o board "Volume" e N cards genéricos,
+ * 40/30/20/10% nas quatro fases, para medir desempenho. Cards pelo core, em lotes paralelos.
+ */
+async function carga(n: number) {
+  let [u] = await db.select().from(users).where(eq(users.email, EMAIL));
+  if (!u) [u] = await db.insert(users).values({ email: EMAIL, name: "Demo", auth: { senha: await hashSenha(SENHA), sv: 0 } }).returning();
+  const actor: Actor = { type: "user", id: u.id };
+  const [antigo] = await db.select({ id: workspaces.id, name: workspaces.name }).from(workspaces).where(eq(workspaces.slug, "carga"));
+  if (antigo) await excluirDemo(antigo, "carga");
+  const { boardId, fases } = await db.transaction(async (tx) => {
+    const [ws] = await tx.insert(workspaces).values({ slug: "carga", name: "Volume de carga", settings: { timezone: "America/Sao_Paulo" } }).returning();
+    await tx.insert(workspaceMembers).values({ workspaceId: ws.id, userId: u.id, orgRole: "owner" });
+    const [b] = await tx.insert(boards).values({ workspaceId: ws.id, slug: "volume", name: "Volume", kind: "workflow" }).returning();
+    const fases: string[] = [];
+    for (const [i, name] of ["Entrada", "Triagem", "Execução", "Concluído"].entries()) {
+      const [p] = await tx.insert(phases).values({ boardId: b.id, name, position: i, isTerminal: i === 3 }).returning();
+      fases.push(p.id);
+    }
+    const campos: [string, string, string, Record<string, unknown>][] = [
+      ["titulo", "Título", "text", {}],
+      ["valor", "Valor", "currency", { currency: { code: "BRL" } }],
+      ["data", "Data", "date", {}],
+      ["categoria", "Categoria", "select", { options: ["A", "B", "C"] }],
+    ];
+    const ids: string[] = [];
+    for (const [i, [slug, name, type, config]] of campos.entries()) {
+      const [f] = await tx.insert(fields).values({ boardId: b.id, slug, name, type: type as never, position: i, config }).returning();
+      ids.push(f.id);
+    }
+    await tx.update(boards).set({ titleFieldId: ids[0] }).where(eq(boards.id, b.id));
+    return { boardId: b.id, fases };
+  });
+  const cotas = [0.4, 0.3, 0.2, 0.1].map((p) => Math.floor(n * p));
+  cotas[0] += n - cotas.reduce((a, b) => a + b, 0);
+  const tarefas = cotas.flatMap((q, f) => Array.from({ length: q }, (_, i) => ({ fase: fases[f], i })));
+  const inicio = Date.now();
+  for (let k = 0; k < tarefas.length; k += 16) {
+    await Promise.all(
+      tarefas.slice(k, k + 16).map(({ fase, i }, j) =>
+        createCard({
+          boardId,
+          phaseId: fase,
+          props: { titulo: `Item ${String(k + j + 1).padStart(5, "0")}`, valor: ((k + j) % 97) * 10.5, data: dia(((k + j) % 60) - 30), categoria: ["A", "B", "C"][i % 3] },
+          actor,
+        }),
+      ),
+    );
+    if ((k / 16) % 40 === 0) process.stdout.write(`seed --carga: ${k + 16 > tarefas.length ? tarefas.length : k + 16}/${tarefas.length}`);
+  }
+  console.log(`
+seed --carga: ${n} cards em /w/carga/b/volume (${cotas.join("/")} por fase) em ${Math.round((Date.now() - inicio) / 1000)}s. Login: ${EMAIL}`);
 }
 
 async function main() {
+  const argCarga = process.argv.find((a) => a === "--carga" || a.startsWith("--carga="));
+  if (argCarga) {
+    const n = argCarga.includes("=") ? Number(argCarga.split("=")[1]) : 5000;
+    if (!Number.isInteger(n) || n < 1 || n > 100_000) throw new Error("--carga=N: N inteiro de 1 a 100.000");
+    return carga(n);
+  }
   const reset = process.argv.includes("--reset");
   const [existe] = await db.select({ id: workspaces.id, name: workspaces.name }).from(workspaces).where(eq(workspaces.slug, "demo"));
   if (existe && !reset) {
@@ -91,10 +152,20 @@ async function main() {
       await cfg(b.id, "board", b.id);
       return b.id;
     };
-    const fasesDe = async (boardId: string, lista: { name: string; terminal?: boolean }[]) => {
+    const fasesDe = async (boardId: string, lista: { name: string; terminal?: boolean; descricao?: string; slaDias?: number }[]) => {
       const f: Record<string, string> = {};
       for (const [i, x] of lista.entries()) {
-        const [p] = await tx.insert(phases).values({ boardId, name: x.name, position: i, isTerminal: x.terminal ?? false }).returning();
+        const [p] = await tx
+          .insert(phases)
+          .values({
+            boardId,
+            name: x.name,
+            position: i,
+            isTerminal: x.terminal ?? false,
+            settings: x.descricao ? { description: x.descricao } : {},
+            sla: x.slaDias ? { duration: x.slaDias, unit: "days" } : null,
+          })
+          .returning();
         f[x.name] = p.id;
         await cfg(boardId, "phase", p.id, { name: x.name });
       }
@@ -135,23 +206,33 @@ async function main() {
     await campo(bItens, "quantidade", "Qtd.", "number", 3);
     await campo(bItens, "separado", "Separado", "boolean", 4);
     await campo(bItens, "separado_em", "Separado em", "date", 5);
-    await campo(bItens, "produto", "Produto", "relation", 6, { relation: { target_board: bProd, cardinality: "one", inverse_name: "itens" } });
+    await campo(bItens, "produto", "Produto", "relation", 6, { relation: { target_board: bProd, cardinality: "one", inverse_name: "itens", show_on_card: true } });
 
     // Entregas (fluxo): instruções obrigatórias em texto longo, que o "Adicionar" rápido não cobre;
     // na sub-tabela do pedido o botão abre o formulário completo já vinculado.
     const bEnt = await board("entregas", "Entregas", "workflow");
-    const fEnt = await fasesDe(bEnt, [{ name: "Agendada" }, { name: "Em rota" }, { name: "Entregue", terminal: true }, { name: "Falhou", terminal: true }]);
+    const fEnt = await fasesDe(bEnt, [
+      { name: "Agendada", descricao: "Entregas combinadas com o cliente, aguardando a saída.", slaDias: 3 },
+      { name: "Em rota", descricao: "Entregas chegam aqui quando saem do depósito." },
+      { name: "Entregue", terminal: true, descricao: "Entregas concluídas." },
+      { name: "Falhou", terminal: true, descricao: "Entregas que não puderam ser concluídas." },
+    ]);
     await titulo(bEnt, await campo(bEnt, "descricao", "Descrição", "text", 0));
     const eTipo = await campo(bEnt, "tipo", "Tipo", "select", 1, { options: ["Normal", "Expressa"] });
     const eValor = await campo(bEnt, "valor", "Valor", "currency", 2, { currency: { code: "BRL" } });
     const ePrevisao = await campo(bEnt, "previsao", "Previsão", "date", 3);
     await campo(bEnt, "instrucoes", "Instruções", "long_text", 4, {}, { requiredExpr: "true", helpText: "Como e onde entregar." });
-    await campo(bEnt, "conferido", "Conferido", "boolean", 5);
+    const eConferido = await campo(bEnt, "conferido", "Conferido", "boolean", 5);
     await campo(bEnt, "entregador", "Entregador", "person", 6);
 
     // Pedidos (fluxo) -------------------------------------------------------
     const bPed = await board("pedidos", "Pedidos", "workflow");
-    const fPed = await fasesDe(bPed, [{ name: "Novo" }, { name: "Em separação" }, { name: "Enviado" }, { name: "Entregue", terminal: true }]);
+    const fPed = await fasesDe(bPed, [
+      { name: "Novo", descricao: "Pedidos recebidos, aguardando conferência." },
+      { name: "Em separação", descricao: "Itens sendo separados no depósito.", slaDias: 2 },
+      { name: "Enviado", descricao: "Pedidos a caminho do cliente." },
+      { name: "Entregue", terminal: true, descricao: "Pedidos concluídos." },
+    ]);
     // Fases de preenchimento (decisão 18-revisada): dados do pedido no Novo, somente leitura depois (o
     // contato pode ser corrigido em qualquer fase); "Valor enviado" aparece a partir do Enviado.
     const novo = { fill_phases: [fPed["Novo"]] };
@@ -172,7 +253,7 @@ async function main() {
     await garantirIndiceExclusivo(tx, pEntregas);
     await campo(bPed, "expressa", "Entrega expressa", "boolean", 10, novo);
     await campo(bPed, "janela", "Janela de entrega", "text", 11, novo, { visibleExpr: "card.expressa == true", requiredExpr: "card.expressa == true" });
-    await campo(bPed, "cliente", "Cliente", "relation", 12, { ...novo, relation: { target_board: bCli, cardinality: "one", inverse_name: "pedidos" } });
+    await campo(bPed, "cliente", "Cliente", "relation", 12, { ...novo, relation: { target_board: bCli, cardinality: "one", inverse_name: "pedidos", show_on_card: true } });
     const pComprovante = await campo(bPed, "comprovante", "Comprovante do pedido", "attachment", 13, { ...novo, accept: ".pdf,.docx" }, { requiredExpr: "true", helpText: "PDF ou Word do pedido." });
     await campo(bPed, "responsavel", "Responsável", "person", 14, novo);
     const pAte = await campo(bPed, "entrega_ate", "Entrega até", "date", 15, novo);
@@ -182,9 +263,9 @@ async function main() {
     // Entregas: cliente do pedido (espelho), para o cartão do kanban.
     const eCliente = await campo(bEnt, "cliente", "Cliente", "lookup", 7, { lookup: { via_field: pEntregas, path: "cliente", mode: "ref" } });
 
-    // Cartões dos kanbans: até 3 campos + prazo.
-    await tx.update(boards).set({ settings: { kanban_fields: [pTotal, pQtd], kanban_due_field: pAte } }).where(eq(boards.id, bPed));
-    await tx.update(boards).set({ settings: { kanban_fields: [eTipo, eValor, eCliente], kanban_due_field: ePrevisao } }).where(eq(boards.id, bEnt));
+    // Cartões dos kanbans: campos resumidos (até 8) + prazo; o cliente do pedido aparece como conexão.
+    await tx.update(boards).set({ settings: { kanban_fields: [pRef, pTotal, pQtd], kanban_due_field: pAte } }).where(eq(boards.id, bPed));
+    await tx.update(boards).set({ settings: { kanban_fields: [eTipo, eValor, ePrevisao, eCliente, eConferido], kanban_due_field: ePrevisao } }).where(eq(boards.id, bEnt));
 
     // Regra em várias fases: só envia (ou entrega) com todos os itens separados.
     const [regra] = await tx

@@ -1,28 +1,15 @@
 "use client";
-// Settings → Automações: lista com ambiente e última execução; editor gatilho → condição → passos;
-// "Testar com card" roda em modo teste (nada é gravado) e mostra o log.
+// Peças das automações usadas pela página do board (pagina-automacoes.tsx): resumo e editor do gatilho
+// e "Testar com card", que roda em modo teste (nada é gravado) e mostra o log.
 import { useState, useTransition } from "react";
-import Link from "next/link";
-import { FlaskConical, Pencil, Plus, Trash2 } from "lucide-react";
+import { FlaskConical } from "lucide-react";
 import { toast } from "sonner";
-import {
-  arquivarAutomacaoAction,
-  ativarAutomacaoAction,
-  buscarCardsDoBoardAction,
-  salvarAutomacaoAction,
-  testarAutomacaoAction,
-  type ExecucaoUI,
-} from "@/app/w/[ws]/b/[board]/settings/actions";
-import { ConstrutorCondicoes } from "@/components/condicoes/construtor";
-import { useAcaoConfig } from "@/components/config/config-fases";
+import { buscarCardsDoBoardAction, testarAutomacaoAction, type ExecucaoUI } from "@/app/w/[ws]/b/[board]/settings/actions";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input, Label, NativeSelect } from "@/components/ui/input";
-import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/misc";
 import { TIPOS_GATILHO, type TipoGatilho } from "@/lib/automacoes";
-import { cn } from "@/lib/utils";
 import type { ContextoAutomacoes } from "./contexto";
-import { EditorPassos, type PassoUI } from "./editor-passos";
 import { BadgeStatus, LogExecucao } from "./log-execucao";
 
 export interface AutomacaoUI {
@@ -35,11 +22,13 @@ export interface AutomacaoUI {
   suppress: boolean;
   enabled: boolean;
   ultima: { status: string; quando: string; erro: string | null } | null;
+  atualizadoEm: string;
+  atualizadoPor: string | null;
 }
 
 export const ROTULO_AMBIENTE: Record<string, string> = { draft: "Rascunho", test: "Teste", published: "Publicada" };
 
-function resumoGatilho(t: Record<string, unknown>, ctx: ContextoAutomacoes): string {
+export function resumoGatilho(t: Record<string, unknown>, ctx: ContextoAutomacoes): string {
   const fase = (id: unknown) => ctx.fases.find((f) => f.id === id)?.name ?? "?";
   const campo = (id: unknown) => ctx.campos.find((c) => c.id === id)?.name ?? "?";
   switch (t.type) {
@@ -66,85 +55,7 @@ function resumoGatilho(t: Record<string, unknown>, ctx: ContextoAutomacoes): str
   }
 }
 
-export function ConfigAutomacoes({ ctx, automacoes }: { ctx: ContextoAutomacoes; automacoes: AutomacaoUI[] }) {
-  const [editando, setEditando] = useState<string | null>(null);
-  const [testando, setTestando] = useState<AutomacaoUI | null>(null);
-  const { pendente, executar } = useAcaoConfig();
-  const atual = editando && editando !== "nova" ? automacoes.find((a) => a.id === editando) ?? null : null;
-  return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle>Automações</CardTitle>
-        <div className="flex items-center gap-2">
-          <Link href={`/w/${ctx.ws}/b/${ctx.board}/settings?aba=execucoes`} className="text-sm text-muted-foreground hover:text-foreground">
-            Execuções
-          </Link>
-          <Button size="sm" onClick={() => setEditando("nova")}>
-            <Plus /> Nova automação
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {!automacoes.length && <p className="text-sm text-muted-foreground">Nenhuma automação. Automações reagem a eventos do card (criação, fase, campos) ou a agendamentos e executam passos.</p>}
-        <ul className="flex flex-col divide-y rounded-md border">
-          {automacoes.map((a) => (
-            <li key={a.id} className={cn("flex items-center gap-3 px-3 py-2", !a.enabled && "opacity-60")} data-automacao={a.nome}>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="font-medium">{a.nome}</span>
-                  <Badge variant={a.env === "published" ? "default" : "outline"} data-ambiente={a.env}>
-                    {ROTULO_AMBIENTE[a.env]}
-                  </Badge>
-                </div>
-                <p className="truncate text-xs text-muted-foreground">
-                  {resumoGatilho(a.trigger, ctx)} · {a.steps.length} passo(s)
-                  {a.condicao ? " · com condição" : ""}
-                </p>
-              </div>
-              <div className="text-right text-xs text-muted-foreground" data-ultima-execucao>
-                {a.ultima ? (
-                  <>
-                    <BadgeStatus status={a.ultima.status} />
-                    <div>{new Date(a.ultima.quando).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</div>
-                  </>
-                ) : (
-                  "nunca rodou"
-                )}
-              </div>
-              <label className="flex items-center gap-1.5 text-xs">
-                <input type="checkbox" className="size-4" checked={a.enabled} disabled={pendente} onChange={(e) => executar(() => ativarAutomacaoAction(ctx.ws, ctx.board, a.id, e.target.checked))} />
-                ativa
-              </label>
-              <Button variant="ghost" size="icon" aria-label={`Testar ${a.nome}`} title="Testar com card" onClick={() => setTestando(a)}>
-                <FlaskConical />
-              </Button>
-              <Button variant="ghost" size="icon" aria-label={`Editar ${a.nome}`} onClick={() => setEditando(a.id)}>
-                <Pencil />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={`Arquivar ${a.nome}`}
-                disabled={pendente}
-                onClick={() => confirm(`Arquivar a automação "${a.nome}"?`) && executar(() => arquivarAutomacaoAction(ctx.ws, ctx.board, a.id), "Automação arquivada")}
-              >
-                <Trash2 />
-              </Button>
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-      <Dialog open={editando !== null} onOpenChange={(v) => !v && setEditando(null)}>
-        <DialogContent className="max-w-4xl">{editando !== null && <EditorAutomacao key={editando} ctx={ctx} atual={atual} fechar={() => setEditando(null)} />}</DialogContent>
-      </Dialog>
-      <Dialog open={testando !== null} onOpenChange={(v) => !v && setTestando(null)}>
-        <DialogContent className="max-w-2xl">{testando && <TestarComCard key={testando.id} ctx={ctx} automacao={testando} />}</DialogContent>
-      </Dialog>
-    </Card>
-  );
-}
-
-function gatilhoVazio(tipo: TipoGatilho): Record<string, unknown> {
+export function gatilhoVazio(tipo: TipoGatilho): Record<string, unknown> {
   switch (tipo) {
     case "card_entered_phase":
     case "card_left_phase":
@@ -160,81 +71,7 @@ function gatilhoVazio(tipo: TipoGatilho): Record<string, unknown> {
   }
 }
 
-function EditorAutomacao({ ctx, atual, fechar }: { ctx: ContextoAutomacoes; atual: AutomacaoUI | null; fechar: () => void }) {
-  const { pendente, executar } = useAcaoConfig();
-  const [nome, setNome] = useState(atual?.nome ?? "");
-  const [gatilho, setGatilho] = useState<Record<string, unknown>>(atual?.trigger ?? { type: "card_created" });
-  const [condicao, setCondicao] = useState(atual?.condicao ?? "");
-  const [passos, setPassos] = useState<PassoUI[]>((atual?.steps as PassoUI[]) ?? []);
-  const [env, setEnv] = useState<AutomacaoUI["env"]>(atual?.env ?? "draft");
-  const [suppress, setSuppress] = useState(atual?.suppress ?? false);
-  const transicao = gatilho.type === "card_entered_phase" || gatilho.type === "card_left_phase";
-  const condicoes = ctx.condicoes.filter((c) => transicao || (c.caminho !== "fase_origem" && c.caminho !== "fase_destino"));
-  return (
-    <form
-      className="flex min-h-0 flex-col"
-      aria-label={atual ? "Editar automação" : "Nova automação"}
-      action={() =>
-        executar(
-          () => salvarAutomacaoAction(ctx.ws, ctx.board, atual?.id ?? null, { nome, trigger: gatilho, condicao, steps: passos, env, suppress }),
-          atual ? "Automação salva" : "Automação criada",
-          fechar,
-        )
-      }
-    >
-      <DialogHeader>
-        <DialogTitle>{atual ? `Editar automação: ${atual.nome}` : "Nova automação"}</DialogTitle>
-        <DialogDescription>Quando o gatilho acontece e a condição é verdadeira, os passos rodam em ordem (param no primeiro erro).</DialogDescription>
-      </DialogHeader>
-      <DialogBody className="flex flex-col gap-4">
-        <div className="grid grid-cols-[2fr_1fr] gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="auto-nome">Nome</Label>
-            <Input id="auto-nome" aria-label="Nome da automação" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Avisar financeiro quando o contrato for assinado" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="auto-env">Ambiente</Label>
-            <NativeSelect id="auto-env" aria-label="Ambiente" value={env} onChange={(e) => setEnv(e.target.value as AutomacaoUI["env"])}>
-              <option value="draft">Rascunho (não dispara)</option>
-              <option value="test">Teste (simula e registra)</option>
-              <option value="published">Publicada</option>
-            </NativeSelect>
-          </div>
-        </div>
-
-        <section className="flex flex-col gap-2 rounded-md border p-3">
-          <h3 className="text-sm font-semibold">1. Quando</h3>
-          <EditorGatilho ctx={ctx} g={gatilho} set={setGatilho} />
-        </section>
-
-        <section className="flex flex-col gap-2 rounded-md border p-3">
-          <h3 className="text-sm font-semibold">2. Se (opcional)</h3>
-          <ConstrutorCondicoes key={String(gatilho.type)} rotulo="Condição da automação" valor={condicao} onChange={setCondicao} campos={condicoes} />
-        </section>
-
-        <section className="flex flex-col gap-2 rounded-md border p-3">
-          <h3 className="text-sm font-semibold">3. Então</h3>
-          <EditorPassos ctx={ctx} passos={passos} onChange={setPassos} />
-        </section>
-
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" className="size-4" checked={suppress} onChange={(e) => setSuppress(e.target.checked)} />
-          Não disparar outras automações com o que esta automação alterar
-        </label>
-      </DialogBody>
-      <DialogFooter>
-        <Button type="button" variant="ghost" onClick={fechar}>
-          Cancelar
-        </Button>
-        <Button type="submit" disabled={pendente}>
-          Salvar automação
-        </Button>
-      </DialogFooter>
-    </form>
-  );
-}
-
-function EditorGatilho({ ctx, g, set }: { ctx: ContextoAutomacoes; g: Record<string, unknown>; set: (g: Record<string, unknown>) => void }) {
+export function EditorGatilho({ ctx, g, set }: { ctx: ContextoAutomacoes; g: Record<string, unknown>; set: (g: Record<string, unknown>) => void }) {
   const upd = (k: string, v: unknown) => set({ ...g, [k]: v });
   const datas = ctx.campos.filter((c) => c.type === "date" || c.type === "datetime");
   const rel = ctx.relacoes.find((r) => r.id === g.relation);
@@ -338,7 +175,7 @@ function EditorGatilho({ ctx, g, set }: { ctx: ContextoAutomacoes; g: Record<str
   );
 }
 
-function TestarComCard({ ctx, automacao }: { ctx: ContextoAutomacoes; automacao: AutomacaoUI }) {
+export function TestarComCard({ ctx, automacao }: { ctx: ContextoAutomacoes; automacao: AutomacaoUI }) {
   const [termo, setTermo] = useState("");
   const [opcoes, setOpcoes] = useState<{ id: string; title: string }[]>([]);
   const [escolhido, setEscolhido] = useState<{ id: string; title: string } | null>(null);

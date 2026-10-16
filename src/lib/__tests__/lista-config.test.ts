@@ -1,41 +1,63 @@
 import { describe, expect, it } from "vitest";
 import { ErroConfigCampo, expressoesDaConfig, normalizarConfig, type ContextoConfig } from "../config-campos";
-import { colunasDaTabela, filtrarLinhas, linhasDaTabela } from "../tabela";
+import { colunasDisponiveis, colunasVisiveis, linhasDaLista } from "../lista";
+import { duracaoCurta } from "../tempo";
 
-describe("tabela", () => {
+describe("lista", () => {
   const campos = [
     { id: "t", name: "Título", type: "text" },
     { id: "v", name: "Valor", type: "currency" },
     { id: "r", name: "Rel", type: "relation" },
     { id: "g", name: "Global", type: "rollup" },
+    { id: "p", name: "Dono", type: "person" },
   ];
-  const cards = [
-    { id: "a1", title: "Contrato Ação", phaseId: "p1", props: { t: "Contrato Ação", v: 10 }, computed: { g: 5 } },
-    { id: "b2", title: "", phaseId: null, props: { v: null }, computed: {} },
-  ];
-
-  it("colunas: sem relação nem título; fase primeiro em fluxo", () => {
-    expect(colunasDaTabela(campos, "t", true).map((c) => c.id)).toEqual(["__fase", "v", "g"]);
-    expect(colunasDaTabela(campos, "t", false).find((c) => c.id === "g")?.calculado).toBe(true);
+  const agora = Date.parse("2026-09-24T12:00:00Z");
+  const card = (id: string, extra: object) => ({
+    id,
+    title: "",
+    phaseId: null as string | null,
+    status: "open",
+    props: {} as Record<string, unknown>,
+    computed: {} as Record<string, unknown>,
+    assignees: [] as string[],
+    dueAt: null as Date | null,
+    phaseEnteredAt: null as Date | null,
+    createdAt: new Date(agora - 3 * 86_400_000),
+    updatedAt: new Date(agora - 2 * 3_600_000),
+    ...extra,
   });
 
-  it("linhas: texto formatado e valor de ordenação numérico ou nulo", () => {
-    const [l1, l2] = linhasDaTabela(cards, campos, new Map([["p1", "Elaboração"]]));
-    expect(l1.textos.v).toBe("R$ 10,00");
-    expect(l1.ordem.v).toBe(10);
-    expect(l1.ordem.g).toBe(5);
-    expect(l1.fase).toBe("Elaboração");
+  it("colunas: sistema primeiro (fase e tempo na fase só em fluxo); campos sem título nem relação", () => {
+    expect(colunasDisponiveis(campos, "t", true).map((c) => c.id)).toEqual([
+      "__fase", "__titulo", "__vencimento", "__responsaveis", "__tempo_fase", "__tempo_fluxo", "__atualizacao", "v", "g", "p",
+    ]);
+    expect(colunasDisponiveis(campos, "t", false).map((c) => c.id)).not.toContain("__fase");
+  });
+
+  it("colunas salvas: na ordem salva, ignorando as que sumiram; sem escolha, todas", () => {
+    const todas = colunasDisponiveis(campos, "t", true);
+    expect(colunasVisiveis(todas, ["v", "sumiu", "__titulo"]).map((c) => c.id)).toEqual(["v", "__titulo"]);
+    expect(colunasVisiveis(todas, undefined)).toHaveLength(todas.length);
+  });
+
+  it("linhas: fase, título, responsáveis (assignees + campo pessoa), durações e valores formatados", () => {
+    const [l1, l2] = linhasDaLista(
+      [
+        card("a1", { title: "Pedido Ação", phaseId: "p1", assignees: ["u1"], props: { v: 10, p: "u2" }, computed: { g: 5 }, phaseEnteredAt: new Date(agora - 19 * 3_600_000) }),
+        card("b2", { dueAt: new Date("2026-12-31T12:00:00Z") }),
+      ],
+      campos,
+      { fases: new Map([["p1", { nome: "Novo", cor: "var(--f1)" }]]), pessoas: new Map([["u1", "Ana"], ["u2", "Beto"]]), duracao: duracaoCurta, agora },
+    );
+    expect(l1.textos.__fase).toBe("Novo");
+    expect(l1.corFase).toBe("var(--f1)");
+    expect(l1.textos.__responsaveis).toBe("Ana, Beto");
+    expect([l1.textos.__tempo_fase, l1.textos.__tempo_fluxo, l1.textos.__atualizacao]).toEqual(["19h", "3d", "2h"]);
+    expect(l1.textos.v).toMatch(/^R\$\s10,00$/);
+    expect(l1.textos.g).toBe("5");
     expect(l2.titulo).toBe("Sem título · b2");
-    expect(l2.ordem.v).toBeNull();
-  });
-
-  it("filtro ignora acento e caixa, exige todas as palavras", () => {
-    const linhas = linhasDaTabela(cards, campos, new Map([["p1", "Elaboração"]]));
-    expect(filtrarLinhas(linhas, "acao").map((l) => l.id)).toEqual(["a1"]);
-    expect(filtrarLinhas(linhas, "elaboracao 10,00")).toHaveLength(1);
-    expect(filtrarLinhas(linhas, "contrato inexistente")).toHaveLength(0);
-    expect(filtrarLinhas(linhas, "  ")).toHaveLength(2);
-    expect(filtrarLinhas(linhas, "b2")).toHaveLength(1);
+    expect(l2.textos.__vencimento).toBe("31/12/2026");
+    expect(l2.textos.__tempo_fase).toBe("");
   });
 });
 

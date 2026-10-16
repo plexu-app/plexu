@@ -15,6 +15,11 @@ import { estadoCriacao, registroDoForm, valoresDoFormData } from "@/lib/campos-c
 import { camposDaFase, hojeSP } from "./b/[board]/_lib/campos-da-fase";
 import { propsDoForm } from "@/lib/form-campos";
 import { TIPOS_CALCULADOS_UI } from "@/lib/formatar";
+import { lerFiltros, type FiltrosBoard } from "@/lib/filtros";
+import { cartoesDe, paginaDaFase } from "@/server/kanban";
+import { lerOrdem, paginaDaLista, salvarColunasDaLista, type OrdemLista } from "@/server/lista";
+import type { LinhaLista } from "@/lib/lista";
+import type { CartaoKanban } from "@/components/kanban-dados";
 
 export type Resultado = { ok: true } | { ok: false; motivo: string };
 
@@ -62,7 +67,7 @@ export async function criarCardAction(ws: string, board: string, phaseId: string
     ({ id } = await createCard({ boardId: b.id, phaseId, props: {}, actor: ctx.actor }));
   });
   if (!r.ok) return r;
-  redirect(`${caminhoBoard(ws, board)}/c/${id}`);
+  redirect(`/w/${ws}/c/${id}`);
 }
 
 export async function moverCardAction(ws: string, board: string, cardId: string, phaseId: string): Promise<Resultado> {
@@ -201,7 +206,7 @@ export async function comentarAction(ws: string, board: string, cardId: string, 
   const b = await exigirBoard(ctx, board);
   await exigirCard(b, cardId);
   const r = await tentar(() => addComment({ cardId, body: String(form.get("body") ?? ""), actor: ctx.actor }));
-  revalidatePath(`${caminhoBoard(ws, board)}/c/${cardId}`);
+  revalidatePath(`/w/${ws}/c/${cardId}`);
   return r;
 }
 
@@ -299,4 +304,102 @@ export async function movimentosAction(ws: string, board: string, cardId: string
   } catch {
     return []; // sem a informação, o arrasto segue e o core decide ao soltar
   }
+}
+
+// ---------------------------------------------------------------------------
+// Kanban paginado
+// ---------------------------------------------------------------------------
+
+/** Próxima página de uma fase (rolagem infinita da coluna), com os mesmos filtros da URL. */
+export async function maisCartoesAction(ws: string, board: string, faseId: string, offset: number, filtros: FiltrosBoard): Promise<CartaoKanban[]> {
+  const ctx = await exigirMembro(ws);
+  const b = await exigirBoard(ctx, board);
+  if (!b.fases.some((f) => f.id === faseId)) return [];
+  const f = lerFiltros(new URLSearchParams({ q: filtros.q ?? "", resp: filtros.resp ?? "", atrasados: filtros.atrasados ? "1" : "" }));
+  const pagina = await paginaDaFase(b, faseId, f, Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0);
+  return cartoesDe(ws, ctx.ws.id, b, pagina);
+}
+
+/**
+ * Mover pelo kanban: a UI já moveu (otimista); devolve o cartão atualizado (tempo na fase zerado) em
+ * vez de revalidar a página inteira, que recarregaria todas as colunas.
+ */
+export async function moverNoKanbanAction(ws: string, board: string, cardId: string, phaseId: string): Promise<Resultado & { cartao?: CartaoKanban }> {
+  const ctx = await exigirMembro(ws);
+  const b = await exigirBoard(ctx, board);
+  await exigirCard(b, cardId);
+  const r = await tentar(() => moveCard({ cardId, toPhaseId: phaseId, actor: ctx.actor }));
+  if (!r.ok) return r;
+  const c = await cardDoWorkspace(ctx.ws.id, cardId);
+  const [cartao] = c ? await cartoesDe(ws, ctx.ws.id, b, [c]) : [];
+  return { ok: true, cartao };
+}
+
+// ---------------------------------------------------------------------------
+// Lista
+// ---------------------------------------------------------------------------
+
+/** Próxima página da lista (50), com filtros e ordenação da URL. */
+export async function maisLinhasAction(ws: string, board: string, filtros: FiltrosBoard, ordem: OrdemLista, offset: number): Promise<LinhaLista[]> {
+  const ctx = await exigirMembro(ws);
+  const b = await exigirBoard(ctx, board);
+  const f = lerFiltros(new URLSearchParams({ q: filtros.q ?? "", resp: filtros.resp ?? "", atrasados: filtros.atrasados ? "1" : "" }));
+  const o = lerOrdem({ ordem: ordem.coluna, dir: ordem.dir });
+  return (await paginaDaLista(ctx.ws.id, b, f, o, Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0)).linhas;
+}
+
+/** Colunas da lista (escolha e ordem), guardadas na view do board para todos. */
+export async function salvarColunasListaAction(ws: string, board: string, colunas: string[]): Promise<Resultado> {
+  const ctx = await exigirMembro(ws);
+  const b = await exigirBoard(ctx, board);
+  return tentar(async () => {
+    try {
+      await salvarColunasDaLista(ctx.ws.id, b, colunas, ctx.usuario.id);
+    } catch (e) {
+      throw e instanceof Error && e.message.startsWith("escolha") ? new ErroConfig(e.message) : e;
+    }
+  });
+}
+
+/** Mover vários cards de uma vez: cada um passa pelas regras; devolve os que não puderam ir. */
+export async function moverEmMassaAction(ws: string, board: string, ids: string[], phaseId: string): Promise<{ movidos: number; falhas: { id: string; motivo: string }[] }> {
+  const ctx = await exigirMembro(ws);
+  const b = await exigirBoard(ctx, board);
+  if (!b.fases.some((f) => f.id === phaseId)) return { movidos: 0, falhas: ids.map((id) => ({ id, motivo: "fase inválida" })) };
+  let movidos = 0;
+  const falhas: { id: string; motivo: string }[] = [];
+  for (const id of [...new Set(ids)].slice(0, 200)) {
+    const r = await tentar(async () => {
+      await exigirCard(b, id);
+      await moveCard({ cardId: id, toPhaseId: phaseId, actor: ctx.actor });
+    });
+    if (r.ok) movidos++;
+    else falhas.push({ id, motivo: r.motivo });
+  }
+  revalidatePath(caminhoBoard(ws, board), "layout");
+  return { movidos, falhas };
+}
+
+// ---------------------------------------------------------------------------
+// Card aberto
+// ---------------------------------------------------------------------------
+
+/**
+ * Duplicar: novo card na mesma fase com os valores editáveis do original. Relações, anexos e campos
+ * calculados (sequência, rollup…) não são copiados; o core aplica as regras da criação na fase.
+ */
+export async function duplicarCardAction(ws: string, cardId: string): Promise<{ ok: true; id: string } | { ok: false; motivo: string }> {
+  const ctx = await exigirMembro(ws);
+  const c = await cardDoWorkspace(ctx.ws.id, cardId);
+  if (!c) return { ok: false, motivo: "card não encontrado" };
+  const b = await exigirBoard(ctx, c.boardSlug);
+  const copiaveis = b.campos.filter((f) => !TIPOS_CALCULADOS_UI.has(f.type) && f.type !== "relation" && f.type !== "attachment");
+  const props = Object.fromEntries(copiaveis.flatMap((f) => (c.props[f.id] !== undefined && c.props[f.id] !== null ? [[f.id, c.props[f.id]]] : [])));
+  let id = "";
+  const r = await tentar(async () => {
+    ({ id } = await createCard({ boardId: b.id, phaseId: c.phaseId, props, actor: ctx.actor }));
+  });
+  if (!r.ok) return r;
+  revalidatePath(caminhoBoard(ws, b.slug), "layout");
+  return { ok: true, id };
 }

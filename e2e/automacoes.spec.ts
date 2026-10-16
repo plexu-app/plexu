@@ -40,9 +40,9 @@ test("automação criada pela UI dispara ao criar card; teste com card; execuç�
 async function fluxo(page: Page, { sufixo, nomeAuto, nomeAcao, objeto }: { sufixo: string; nomeAuto: string; nomeAcao: string; objeto: string }) {
 
   // 1. Nova automação: card criado → comentário com a referência, publicada
-  await page.goto("/w/demo/b/pedidos/settings?aba=automacoes");
+  await page.goto("/w/demo/b/pedidos/automacoes");
   await page.getByRole("button", { name: "Nova automação" }).click();
-  const editor = page.getByRole("dialog");
+  const editor = page.getByRole("form", { name: "Nova automação" });
   await editor.getByLabel("Nome da automação").fill(nomeAuto);
   await editor.getByLabel("Ambiente").selectOption({ label: "Publicada" });
   await expect(editor.getByLabel("Gatilho")).toHaveValue("card_created");
@@ -63,6 +63,7 @@ async function fluxo(page: Page, { sufixo, nomeAuto, nomeAcao, objeto }: { sufix
   await expect(linha.locator("[data-ultima-execucao]")).toHaveText("nunca rodou");
 
   // 2. Testar com um card existente: simulação, nada gravado
+  await linha.getByRole("button", { name: `Mais opções de ${nomeAuto}` }).click();
   await linha.getByRole("button", { name: `Testar ${nomeAuto}` }).click();
   const teste = page.getByRole("dialog");
   await teste.getByLabel("Buscar card para testar").click(); // lista os cards do board
@@ -77,7 +78,7 @@ async function fluxo(page: Page, { sufixo, nomeAuto, nomeAcao, objeto }: { sufix
 
   // 3. Criar um card: o worker despacha o evento e a automação comenta
   await page.goto("/w/demo/b/pedidos");
-  await page.getByRole("button", { name: "Novo cartão", exact: true }).click();
+  await page.getByRole("button", { name: "Criar novo cartão" }).click();
   const novo = page.getByRole("dialog", { name: "Novo cartão" });
   await novo.getByLabel("Referência").fill(objeto);
   await novo.getByLabel("Contato").fill("Compras Automação");
@@ -92,7 +93,7 @@ async function fluxo(page: Page, { sufixo, nomeAuto, nomeAcao, objeto }: { sufix
   }).toPass({ timeout: 60_000 });
 
   // 4. Execuções: a do card aparece com sucesso; reexecutar
-  await page.goto("/w/demo/b/pedidos/settings?aba=execucoes");
+  await page.goto("/w/demo/b/pedidos/automacoes?aba=logs");
   await page.getByLabel("Filtrar por automação ou ação").selectOption({ label: nomeAuto });
   const doCard = page.locator("tr[data-execucao]").filter({ has: page.locator(`a[href$="/c/${urlCard.split("/c/")[1]}"]`) });
   const execucao = doCard;
@@ -105,9 +106,9 @@ async function fluxo(page: Page, { sufixo, nomeAuto, nomeAcao, objeto }: { sufix
   await expect(doCard).toHaveCount(2);
 
   // 5. Ação com mini-form: botão no card
-  await page.goto("/w/demo/b/pedidos/settings?aba=acoes");
+  await page.goto("/w/demo/b/pedidos/settings?aba=fluxo");
   await page.getByRole("button", { name: "Nova ação" }).click();
-  const editorAcao = page.getByRole("dialog");
+  const editorAcao = page.getByRole("dialog", { name: "Nova ação" });
   await editorAcao.getByLabel("Nome da ação").fill(nomeAcao);
   await editorAcao.getByRole("button", { name: "Campo do formulário" }).click();
   await editorAcao.getByLabel("Rótulo do campo 1").fill("Nota da revisão");
@@ -128,10 +129,12 @@ async function fluxo(page: Page, { sufixo, nomeAuto, nomeAcao, objeto }: { sufix
   await expect(page.getByText("Revisão: tudo certo")).toBeVisible();
 
   // Limpeza: arquiva a automação e a ação
-  await page.goto("/w/demo/b/pedidos/settings?aba=automacoes");
-  await page.locator(`[data-automacao="${nomeAuto}"]`).getByRole("button", { name: `Arquivar ${nomeAuto}` }).click();
+  await page.goto("/w/demo/b/pedidos/automacoes");
+  const auto = page.locator(`[data-automacao="${nomeAuto}"]`);
+  await auto.getByRole("button", { name: `Mais opções de ${nomeAuto}` }).click();
+  await auto.getByRole("button", { name: `Arquivar ${nomeAuto}` }).click();
   await expect(page.getByText("Automação arquivada")).toBeVisible();
-  await page.goto("/w/demo/b/pedidos/settings?aba=acoes");
+  await page.goto("/w/demo/b/pedidos/settings?aba=fluxo");
   await page.locator(`[data-acao-config="${nomeAcao}"]`).getByRole("button", { name: `Arquivar ${nomeAcao}` }).click();
   await expect(page.getByText("Ação arquivada")).toBeVisible();
 }

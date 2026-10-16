@@ -1,19 +1,19 @@
-import Link from "next/link";
+// Configurações do board (prompt PR 2, C1): modal grande com as abas Formulário inicial · Fases · Pessoas ·
+// E-mail · Configurações do fluxo. Formulário inicial e Fases editam o formulário de uma fase (paleta,
+// prévia, condicionais, opções avançadas). Automações e execuções foram para /automacoes.
+import { redirect } from "next/navigation";
 import type { CampoCondicao } from "@/components/condicoes/construtor";
-import { ConfigCampos } from "@/components/config/config-campos";
 import { ConfigCartao } from "@/components/config/config-cartao";
-import { ConfigFases } from "@/components/config/config-fases";
 import { ConfigRegras } from "@/components/config/config-regras";
+import { EditorFormulario } from "@/components/config/editor-formulario";
+import { ModalConfig } from "@/components/config/modal-config";
 import { ConfigAcoes } from "@/components/automacoes/config-acoes";
-import { ConfigAutomacoes } from "@/components/automacoes/config-automacoes";
-import { Execucoes } from "@/components/automacoes/execucoes";
-import { acoesDoBoard, automacoesDoBoard, estruturaParaAutomacoes, execucoesDoBoard } from "@/server/automacoes";
-import { cn } from "@/lib/utils";
+import { acoesDoBoard, estruturaParaAutomacoes } from "@/server/automacoes";
 import { exigirBoard, exigirMembro, podeConfigurar } from "@/server/acesso";
-import { dadosConfiguracao } from "@/server/config-board";
-import type { BoardCompleto } from "@/server/consultas";
+import { camposArquivados, condicionaisDoBoard, dadosConfiguracao, dependenciasDoBoard } from "@/server/config-board";
+import { membrosDoWorkspace, type BoardCompleto } from "@/server/consultas";
 
-type Aba = "fases" | "campos" | "regras" | "automacoes" | "acoes" | "execucoes";
+type Aba = "formulario" | "fases" | "pessoas" | "email" | "fluxo";
 
 /** Campos oferecidos no construtor de condições: campos do board (exceto relações) e as fases. */
 function camposCondicao(b: BoardCompleto): CampoCondicao[] {
@@ -37,30 +37,36 @@ export default async function Configuracoes({
   searchParams,
 }: {
   params: Promise<{ ws: string; board: string }>;
-  searchParams: Promise<{ aba?: string; automacao?: string; acao?: string; status?: string }>;
+  searchParams: Promise<{ aba?: string; automacao?: string; acao?: string; status?: string; fase?: string }>;
 }) {
   const { ws, board } = await params;
   const ctx = await exigirMembro(ws);
   const b = await exigirBoard(ctx, board);
-  if (!podeConfigurar(ctx)) {
-    return <main className="p-6 text-sm text-muted-foreground">Apenas owner ou admin podem configurar este board.</main>;
-  }
-  const abas: { id: Aba; rotulo: string }[] = [
-    ...(b.kind === "workflow" ? [{ id: "fases" as const, rotulo: "Fases" }] : []),
-    { id: "campos", rotulo: "Campos" },
-    { id: "regras", rotulo: "Regras" },
-    { id: "automacoes", rotulo: "Automações" },
-    { id: "acoes", rotulo: "Ações" },
-    { id: "execucoes", rotulo: "Execuções" },
-  ];
   const sp = await searchParams;
-  const pedida = sp.aba as Aba | undefined;
-  const aba: Aba = abas.some((a) => a.id === pedida) ? pedida! : abas[0].id;
+  const base = `/w/${ws}/b/${b.slug}`;
+  // Endereços antigos das abas
+  if (sp.aba === "automacoes" || sp.aba === "acoes") redirect(`${base}/automacoes`);
+  if (sp.aba === "execucoes") redirect(`${base}/automacoes?aba=logs${sp.automacao ? `&automacao=${sp.automacao}` : ""}${sp.status ? `&status=${sp.status}` : ""}`);
+  if (!podeConfigurar(ctx)) {
+    return <main className="p-6 text-sm text-ink-2">Apenas owner ou admin podem configurar este board.</main>;
+  }
+  const fluxo = b.kind === "workflow" && b.fases.length > 0;
+  const abas: { id: Aba; rotulo: string }[] = [
+    { id: "formulario", rotulo: fluxo ? "Formulário inicial" : "Formulário" },
+    ...(fluxo ? [{ id: "fases" as const, rotulo: "Fases" }] : []),
+    { id: "pessoas", rotulo: "Pessoas" },
+    { id: "email", rotulo: "E-mail" },
+    { id: "fluxo", rotulo: fluxo ? "Configurações do fluxo" : "Configurações da base" },
+  ];
+  const legado: Record<string, Aba> = { campos: "formulario", regras: "fluxo" };
+  const pedida = (legado[sp.aba ?? ""] ?? sp.aba) as Aba | undefined;
+  // ?aba=fases&fase=<primeira> é o formulário inicial
+  const aba: Aba = pedida === "fases" && sp.fase && sp.fase === b.fases[0]?.id ? "formulario" : abas.some((a) => a.id === pedida) ? pedida! : "formulario";
 
-  const d = await dadosConfiguracao(ctx.ws.id, b.id);
-  const fases = b.fases.map((f) => ({ id: f.id, name: f.name, isTerminal: f.isTerminal, color: f.color }));
+  const [d, dependencias, arquivados] = await Promise.all([dadosConfiguracao(ctx.ws.id, b.id), dependenciasDoBoard(b.id), camposArquivados(b.id)]);
+  const { lista: condicionais, gerados } = condicionaisDoBoard(b.settings as Record<string, unknown>);
+  const fases = b.fases.map((f) => ({ id: f.id, name: f.name, isTerminal: f.isTerminal, color: f.color, allowCreate: f.allowCreate, sla: f.sla, descricao: f.descricao }));
   const condicoes = camposCondicao(b);
-  // Campos do card do outro lado de cada relação (board alvo, ou o board da relação que aponta para cá).
   const camposDe = (boardId: string) => d.camposWs.filter((c) => c.boardId === boardId).map(({ slug, name, type }) => ({ slug, name, type }));
   const nomeBoard = (id: string) => d.boards.find((x) => x.id === id)?.name ?? "";
   const relacoesVia = [
@@ -72,104 +78,85 @@ export default async function Configuracoes({
       }),
     ...d.relacoesEntrando.map((r) => ({ id: r.id, rotulo: `${r.boardName} · ${r.name}`, nome: r.name, board: r.boardName, campos: camposDe(r.boardId) })),
   ];
-  const base = `/w/${ws}/b/${b.slug}/settings`;
-  return (
-    <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-6 py-4">
-      <nav role="tablist" aria-label="Configurações" className="flex gap-1 border-b">
-        {abas.map((a) => (
-          <Link
-            key={a.id}
-            role="tab"
-            aria-selected={aba === a.id}
-            href={`${base}?aba=${a.id}`}
-            className={cn("-mb-px border-b-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground", aba === a.id ? "border-primary font-medium text-foreground" : "border-transparent")}
-          >
-            {a.rotulo}
-          </Link>
-        ))}
-      </nav>
-      {aba === "fases" && <ConfigFases ws={ws} board={b.slug} fases={fases} />}
-      {aba === "campos" && (
-        <>
-          <ConfigCampos
-            ws={ws}
-            board={b.slug}
-            titleFieldId={b.titleFieldId}
-            fases={fases}
-            ajustes={d.ajustes.flatMap((a) => (a.fieldId && a.phaseId ? [{ ...a, fieldId: a.fieldId, phaseId: a.phaseId }] : []))}
-            boards={d.boards}
-            relacoesVia={relacoesVia}
-            camposPorBoard={Object.fromEntries(d.boards.map((x) => [x.id, d.camposWs.filter((c) => c.boardId === x.id && c.type !== "relation").map(({ id, name, type }) => ({ id, name, type }))]))}
-            campos={b.campos}
-            condicoes={condicoes}
-          />
-          {b.kind === "workflow" && (
-            <ConfigCartao
-              ws={ws}
-              board={b.slug}
-              campos={b.campos}
-              titleFieldId={b.titleFieldId}
-              atuais={b.settings.kanban_fields ?? []}
-              prazo={b.settings.kanban_due_field ?? null}
-            />
-          )}
-        </>
-      )}
-      {aba === "regras" && (
-        <ConfigRegras
-          ws={ws}
-          board={b.slug}
-          fases={fases}
-          campos={b.campos.map((c) => ({ id: c.id, name: c.name }))}
-          condicoes={condicoes}
-          regras={d.regras.map((r) => ({ id: r.id, kind: r.kind, phaseIds: r.phaseIds, fromPhaseId: r.fromPhaseId, fieldId: r.fieldId, expr: r.expr, message: r.message, onFail: r.onFail, enabled: r.enabled }))}
-        />
-      )}
-      {(aba === "automacoes" || aba === "acoes") && (
-        <PainelAutomacoes aba={aba} ws={ws} wsId={ctx.ws.id} b={b} fases={fases} condicoes={condicoes} />
-      )}
-      {aba === "execucoes" && (
-        <Execucoes
-          ws={ws}
-          board={b.slug}
-          linhas={await execucoesDoBoard(b.id, { automacao: sp.automacao, acao: sp.acao, status: sp.status })}
-          origens={[
-            ...(await automacoesDoBoard(b.id)).map((a) => ({ id: a.id, nome: a.nome, tipo: "automacao" as const })),
-            ...(await acoesDoBoard(b.id)).map((a) => ({ id: a.id, nome: a.nome, tipo: "acao" as const })),
-          ]}
-        />
-      )}
-    </main>
-  );
-}
-
-/** Abas de automações e ações: mesma estrutura de board/campos/fases/relações para os editores. */
-async function PainelAutomacoes({
-  aba,
-  ws,
-  wsId,
-  b,
-  fases,
-  condicoes,
-}: {
-  aba: "automacoes" | "acoes";
-  ws: string;
-  wsId: string;
-  b: BoardCompleto;
-  fases: { id: string; name: string }[];
-  condicoes: CampoCondicao[];
-}) {
-  const e = await estruturaParaAutomacoes(wsId, b.id);
-  const ctx = {
+  const ctxCampos = {
     ws,
     board: b.slug,
-    boardId: b.id,
-    fases: fases.map((f) => ({ id: f.id, name: f.name })),
-    campos: b.campos.map((c) => ({ id: c.id, slug: c.slug, name: c.name, type: c.type })),
-    boards: e.boards,
-    relacoes: e.relacoes,
+    titleFieldId: b.titleFieldId,
+    fases,
+    ajustes: d.ajustes.flatMap((a) => (a.fieldId && a.phaseId ? [{ ...a, fieldId: a.fieldId, phaseId: a.phaseId }] : [])),
+    boards: d.boards,
+    relacoesVia,
+    camposPorBoard: Object.fromEntries(d.boards.map((x) => [x.id, d.camposWs.filter((c) => c.boardId === x.id && c.type !== "relation").map(({ id, name, type }) => ({ id, name, type }))])),
+    campos: b.campos,
     condicoes,
+    dependencias,
+    geradosCondicionais: { visivel: gerados.visivel, obrigatorio: gerados.obrigatorio },
   };
-  if (aba === "automacoes") return <ConfigAutomacoes ctx={ctx} automacoes={await automacoesDoBoard(b.id)} />;
-  return <ConfigAcoes ctx={ctx} acoes={await acoesDoBoard(b.id)} />;
+
+  let conteudo: React.ReactNode;
+  if (aba === "formulario" || aba === "fases") {
+    conteudo = <EditorFormulario ctx={ctxCampos} modo={fluxo ? (aba === "formulario" ? "inicial" : "fases") : "base"} fases={fases} faseId={sp.fase ?? null} condicionais={condicionais} arquivados={arquivados} />;
+  } else if (aba === "pessoas") {
+    const membros = await membrosDoWorkspace(ctx.ws.id);
+    conteudo = (
+      <div className="mx-auto w-full max-w-3xl overflow-y-auto px-6 py-6">
+        <h2 className="mb-1 text-[15px] font-semibold">Pessoas</h2>
+        <p className="mb-4 text-[13px] text-ink-2">Quem tem acesso a este board: os membros do workspace. Papéis (owner, admin, membro) ficam nas configurações do workspace.</p>
+        <ul className="divide-y divide-line-2 rounded border border-line" data-pessoas-board>
+          {membros.map((m) => (
+            <li key={m.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+              <span className="font-medium">{m.nome}</span>
+              <span className="text-ink-3">{m.email}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  } else if (aba === "email") {
+    conteudo = (
+      <div className="mx-auto w-full max-w-3xl px-6 py-6">
+        <h2 className="mb-1 text-[15px] font-semibold">E-mail</h2>
+        <p className="text-[13px] text-ink-2">Em breve: caixa de entrada do board e modelos de e-mail para as automações.</p>
+      </div>
+    );
+  } else {
+    const e = await estruturaParaAutomacoes(ctx.ws.id, b.id);
+    const ctxAuto = {
+      ws,
+      board: b.slug,
+      boardId: b.id,
+      fases: fases.map((f) => ({ id: f.id, name: f.name })),
+      campos: b.campos.map((c) => ({ id: c.id, slug: c.slug, name: c.name, type: c.type })),
+      boards: e.boards,
+      relacoes: e.relacoes,
+      condicoes,
+    };
+    conteudo = (
+      <div className="min-h-0 overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 px-6 py-6">
+          {b.kind === "workflow" && (
+            <ConfigCartao ws={ws} board={b.slug} campos={b.campos} titleFieldId={b.titleFieldId} atuais={b.settings.kanban_fields ?? []} prazo={b.settings.kanban_due_field ?? null} />
+          )}
+          <ConfigRegras
+            ws={ws}
+            board={b.slug}
+            fases={fases}
+            campos={b.campos.map((c) => ({ id: c.id, name: c.name }))}
+            condicoes={condicoes}
+            regras={d.regras
+              .filter((r) => !gerados.regras.includes(r.id))
+              .map((r) => ({ id: r.id, kind: r.kind, phaseIds: r.phaseIds, fromPhaseId: r.fromPhaseId, fieldId: r.fieldId, expr: r.expr, message: r.message, onFail: r.onFail, enabled: r.enabled }))}
+          />
+          <ConfigAcoes ctx={ctxAuto} acoes={await acoesDoBoard(b.id)} />
+        </div>
+      </div>
+    );
+  }
+
+  const href = (id: Aba) => `${base}/settings?aba=${id}`;
+  return (
+    <ModalConfig titulo={`Configurações · ${b.name}`} voltar={base} abas={abas.map((a) => ({ ...a, href: href(a.id) }))} ativa={aba}>
+      {conteudo}
+    </ModalConfig>
+  );
 }

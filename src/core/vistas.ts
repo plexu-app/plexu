@@ -116,6 +116,8 @@ export interface MovimentoPossivel {
   permitido: boolean;
   /** Motivo do bloqueio (regra, obrigatório faltando) ou avisos quando permitido. */
   motivo?: string;
+  /** Bloqueado por campos obrigatórios vazios (não por regra can_enter/can_leave/can_back). */
+  obrigatorios?: boolean;
 }
 
 /** Para cada outra fase do board: o card pode ir para lá agora? Mesma avaliação de moveCard, sem mover. */
@@ -129,7 +131,11 @@ export function movimentosDoCard(input: { cardId: string; actor: Actor }, opts?:
     for (const destino of q.fases) {
       if (destino.id === card.phaseId) continue;
       const r = await avaliarMovimento(op, alvo, origem, destino);
-      saida.push(r.ok ? { faseId: destino.id, permitido: true, ...(r.avisos?.length ? { motivo: r.avisos.join(" ") } : {}) } : { faseId: destino.id, permitido: false, motivo: r.motivo });
+      saida.push(
+        r.ok
+          ? { faseId: destino.id, permitido: true, ...(r.avisos?.length ? { motivo: r.avisos.join(" ") } : {}) }
+          : { faseId: destino.id, permitido: false, motivo: r.motivo, ...(r.campos?.length ? { obrigatorios: true } : {}) },
+      );
     }
     return saida;
   });

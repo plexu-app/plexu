@@ -3,12 +3,14 @@ import "server-only";
 // Toda mudança emite config.changed na mesma transação (decisão 13).
 import { and, asc, count, eq, inArray, isNull, max, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { boards, cards, fieldPhaseSettings, fields, phases, rules } from "@/db/schema";
+import { automations, boards, cards, fieldPhaseSettings, fields, phases, rules } from "@/db/schema";
 import { emitirEventoConfig, garantirIndiceExclusivo, recalcularTitulos, type Actor, type Tx } from "@/core";
 import { normalizarValidacao } from "@/lib/validacao";
 import { parse } from "@/lib/expr";
 import { ErroConfigCampo, expressoesDaConfig, normalizarConfig, TIPOS_VALIDOS, type ContextoConfig } from "@/lib/config-campos";
 import { slugCampo, slugLivre } from "@/lib/slug";
+import { compilarCondicionais, normalizarCondicionais, type Condicional } from "@/lib/condicionais";
+import { dependenciasDosCampos } from "@/lib/dependencias";
 import { ErroConfig } from "./config";
 
 interface Alvo {
@@ -63,20 +65,54 @@ async function faseDoBoard(tx: Tx, a: Alvo, faseId: string) {
   return f;
 }
 
-export async function atualizarFase(a: Alvo, faseId: string, dados: { nome?: string; terminal?: boolean; cor?: string | null }) {
+export interface DadosFase {
+  nome?: string;
+  terminal?: boolean;
+  cor?: string | null;
+  /** phases.settings.description: aparece na fase vazia e no topo do formulário da fase. */
+  descricao?: string | null;
+  /** allow_create: criar card direto nesta fase (a primeira sempre aceita). */
+  permiteCriar?: boolean;
+  /** SLA da fase: passou dele, o "tempo na fase" do cartão fica laranja. null remove. */
+  sla?: { duration: number; unit: "minutes" | "hours" | "days" } | null;
+}
+
+/** SLA validado ou erro: inteiro de 1 a 10.000 em minutos, horas ou dias. */
+function slaValido(sla: DadosFase["sla"]) {
+  if (sla === null || sla === undefined) return sla;
+  const n = Number(sla.duration);
+  if (!Number.isInteger(n) || n < 1 || n > 10_000) throw new ErroConfig("SLA: use um número inteiro de 1 a 10.000");
+  if (!["minutes", "hours", "days"].includes(sla.unit)) throw new ErroConfig("SLA: unidade inválida");
+  return { duration: n, unit: sla.unit };
+}
+
+export async function atualizarFase(a: Alvo, faseId: string, dados: DadosFase) {
   return db.transaction(async (tx) => {
     const f = await faseDoBoard(tx, a, faseId);
     const nome = dados.nome?.trim();
     if (dados.nome !== undefined && !nome) throw new ErroConfig("nome da fase obrigatório");
     // Cor de fase: token do design (f1..f5) ou #rrggbb.
     if (dados.cor && !/^(#[0-9a-f]{6}|f[1-5])$/i.test(dados.cor)) throw new ErroConfig("cor inválida (use f1..f5 ou #rrggbb)");
+    const descricao = dados.descricao === undefined ? undefined : (dados.descricao ?? "").trim().slice(0, 500);
+    const sla = slaValido(dados.sla);
+    const settings = { ...((f.settings as Record<string, unknown>) ?? {}) };
+    if (descricao !== undefined) {
+      if (descricao) settings.description = descricao;
+      else delete settings.description;
+    }
     const novo = {
       name: nome ?? f.name,
       isTerminal: dados.terminal ?? f.isTerminal,
       color: dados.cor === undefined ? f.color : dados.cor || null,
+      allowCreate: dados.permiteCriar ?? f.allowCreate,
+      sla: sla === undefined ? f.sla : sla,
+      settings,
     };
     await tx.update(phases).set(novo).where(eq(phases.id, f.id));
-    await registrar(tx, a, "phase", "updated", f.id, { antes: { name: f.name, is_terminal: f.isTerminal, color: f.color }, depois: novo });
+    await registrar(tx, a, "phase", "updated", f.id, {
+      antes: { name: f.name, is_terminal: f.isTerminal, color: f.color, allow_create: f.allowCreate, sla: f.sla, settings: f.settings },
+      depois: { name: novo.name, is_terminal: novo.isTerminal, color: novo.color, allow_create: novo.allowCreate, sla: novo.sla, settings: novo.settings },
+    });
   });
 }
 
@@ -129,6 +165,10 @@ export interface DadosCampo {
   defaultValueExpr?: string;
   unico?: boolean;
   ajuda?: string;
+  /** Descrição do campo (fields.description), mostrada abaixo do nome no formulário. */
+  descricao?: string;
+  /** Criação: inserir antes deste campo (arrastar da paleta para uma posição). */
+  antesDe?: string | null;
   titulo?: boolean;
   /** Formato (regex) e mensagem, para campos de texto. */
   validacao?: { regex?: string; message?: string; description?: string } | null;
@@ -216,10 +256,21 @@ export async function criarCampo(a: Alvo, d: DadosCampo) {
         defaultValueExpr: p.defaultValueExpr,
         uniqueValue: d.unico === true,
         helpText: d.ajuda?.trim() || null,
+        description: d.descricao?.trim() || null,
         validation: p.validacao,
         position: (m ?? -1) + 1,
       })
       .returning();
+    if (d.antesDe) {
+      const ordem = (await tx.select({ id: fields.id }).from(fields).where(eq(fields.boardId, a.boardId)).orderBy(asc(fields.position), asc(fields.name)))
+        .map((x) => x.id)
+        .filter((id) => id !== f.id);
+      const i = ordem.indexOf(d.antesDe);
+      if (i >= 0) {
+        ordem.splice(i, 0, f.id);
+        for (const [pos, id] of ordem.entries()) await tx.update(fields).set({ position: pos }).where(eq(fields.id, id));
+      }
+    }
     if (d.titulo) {
       await tx.update(boards).set({ titleFieldId: f.id }).where(eq(boards.id, a.boardId));
       await recalcularTitulos({ boardId: a.boardId, actor: a.actor }, { tx });
@@ -253,6 +304,7 @@ export async function editarCampo(a: Alvo, fieldId: string, d: DadosCampo) {
       defaultValueExpr: p.defaultValueExpr,
       uniqueValue: d.unico === true,
       helpText: d.ajuda?.trim() || null,
+      description: d.descricao?.trim() || null,
       validation: p.validacao,
     };
     await tx.update(fields).set(novo).where(eq(fields.id, fieldId));
@@ -451,11 +503,11 @@ export async function dadosConfiguracao(wsId: string, boardId: string) {
 // Exibição do board (boards.settings)
 // ---------------------------------------------------------------------------
 
-/** Campos do cartão do kanban (até 3) e campo de prazo. Mescla em boards.settings. */
+/** Campos do cartão do kanban (até 8, na ordem) e campo de prazo. Mescla em boards.settings. */
 export async function definirExibicaoKanban(a: Alvo, dados: { campos: string[]; prazo: string | null }) {
   return db.transaction(async (tx) => {
     const b = await exigirBoardDoWs(tx, a);
-    const campos = [...new Set(dados.campos)].slice(0, 3);
+    const campos = [...new Set(dados.campos)].slice(0, 8);
     const doBoard = await tx.select({ id: fields.id, type: fields.type }).from(fields).where(and(eq(fields.boardId, a.boardId), isNull(fields.archivedAt)));
     for (const id of campos) if (!doBoard.some((f) => f.id === id)) throw new ErroConfig("campo do cartão não pertence ao board");
     if (dados.prazo && !doBoard.some((f) => f.id === dados.prazo && (f.type === "date" || f.type === "datetime"))) {
@@ -479,4 +531,123 @@ export async function ajustesDoBoard(boardId: string) {
     .innerJoin(fields, eq(fields.id, fieldPhaseSettings.fieldId))
     .where(eq(fields.boardId, boardId));
   return rs.flatMap((a) => (a.fieldId && a.phaseId ? [{ ...a, fieldId: a.fieldId, phaseId: a.phaseId }] : []));
+}
+
+// ---------------------------------------------------------------------------
+// Ordem e restauração de campos (editor do formulário da fase)
+// ---------------------------------------------------------------------------
+
+/** Nova ordem dos campos do board: os ids na ordem dada primeiro, os demais depois, mantendo a ordem relativa. */
+export async function reordenarCampos(a: Alvo, ids: string[]) {
+  return db.transaction(async (tx) => {
+    await exigirBoardDoWs(tx, a);
+    const todos = await tx.select({ id: fields.id }).from(fields).where(eq(fields.boardId, a.boardId)).orderBy(asc(fields.position), asc(fields.name));
+    const existentes = new Set(todos.map((f) => f.id));
+    const pedidos = [...new Set(ids)].filter((id) => existentes.has(id));
+    const ordem = [...pedidos, ...todos.map((f) => f.id).filter((id) => !pedidos.includes(id))];
+    for (const [i, id] of ordem.entries()) await tx.update(fields).set({ position: i }).where(eq(fields.id, id));
+    await registrar(tx, a, "field", "reordered", a.boardId, { ordem: pedidos });
+  });
+}
+
+export async function restaurarCampo(a: Alvo, fieldId: string) {
+  return db.transaction(async (tx) => {
+    await exigirBoardDoWs(tx, a);
+    const [f] = await tx.update(fields).set({ archivedAt: null }).where(and(eq(fields.id, fieldId), eq(fields.boardId, a.boardId))).returning();
+    if (!f) throw new ErroConfig("campo não encontrado");
+    await registrar(tx, a, "field", "restored", fieldId, { slug: f.slug });
+  });
+}
+
+/** Campos arquivados do board (filtro "Campos: arquivados"). */
+export async function camposArquivados(boardId: string) {
+  return db
+    .select({ id: fields.id, name: fields.name, type: fields.type, archivedAt: fields.archivedAt })
+    .from(fields)
+    .where(and(eq(fields.boardId, boardId), sql`${fields.archivedAt} is not null`))
+    .orderBy(asc(fields.name));
+}
+
+// ---------------------------------------------------------------------------
+// Condicionais em campos (lib/condicionais.ts)
+// ---------------------------------------------------------------------------
+
+/** O que as condicionais geraram da última vez: para desfazer o que deixou de valer. */
+interface Gerados {
+  visivel: string[];
+  obrigatorio: string[];
+  regras: string[];
+}
+
+/**
+ * Salva a lista de condicionais (em boards.settings.conditionals) e recompila: visible_expr e
+ * required_expr dos campos tocados, e uma regra can_edit por campo bloqueado. O que a versão anterior
+ * gerou e não vale mais volta ao padrão (expressão vazia, regra removida).
+ */
+export async function salvarCondicionais(a: Alvo, entrada: unknown) {
+  return db.transaction(async (tx) => {
+    const b = await exigirBoardDoWs(tx, a);
+    const campos = await tx.select({ id: fields.id, name: fields.name }).from(fields).where(and(eq(fields.boardId, a.boardId), isNull(fields.archivedAt)));
+    const lista = normalizarCondicionais(entrada, new Set(campos.map((c) => c.id)));
+    if (typeof lista === "string") throw new ErroConfig(lista);
+    for (const c of lista) validarExpr(c.condicao || "true", `condição de ${c.nome}`);
+    const comp = compilarCondicionais(lista);
+    for (const [id, e] of [...Object.entries(comp.visivel), ...Object.entries(comp.obrigatorio)]) validarExpr(e, `expressão gerada para ${campos.find((c) => c.id === id)?.name}`);
+
+    const settings = { ...((b.settings as Record<string, unknown>) ?? {}) };
+    const antes = condicionaisDoBoard(settings).gerados;
+    // Desfaz o que não vale mais
+    for (const id of antes.visivel.filter((id) => !(id in comp.visivel))) await tx.update(fields).set({ visibleExpr: null }).where(and(eq(fields.id, id), eq(fields.boardId, a.boardId)));
+    for (const id of antes.obrigatorio.filter((id) => !(id in comp.obrigatorio))) await tx.update(fields).set({ requiredExpr: null }).where(and(eq(fields.id, id), eq(fields.boardId, a.boardId)));
+    if (antes.regras.length) await tx.delete(rules).where(and(eq(rules.boardId, a.boardId), inArray(rules.id, antes.regras)));
+    // Aplica o novo
+    for (const [id, e] of Object.entries(comp.visivel)) await tx.update(fields).set({ visibleExpr: e }).where(eq(fields.id, id));
+    for (const [id, e] of Object.entries(comp.obrigatorio)) await tx.update(fields).set({ requiredExpr: e }).where(eq(fields.id, id));
+    const regras: string[] = [];
+    const [{ m }] = await tx.select({ m: max(rules.position) }).from(rules).where(eq(rules.boardId, a.boardId));
+    let pos = (m ?? -1) + 1;
+    for (const [id, x] of Object.entries(comp.bloqueio)) {
+      const [r] = await tx
+        .insert(rules)
+        .values({ boardId: a.boardId, kind: "can_edit", fieldId: id, expr: x.expr, message: `Edição bloqueada pela condicional ${x.nomes.join(", ")}.`, position: pos++ })
+        .returning({ id: rules.id });
+      regras.push(r.id);
+    }
+    settings.conditionals = lista;
+    settings.conditionals_generated = { visivel: Object.keys(comp.visivel), obrigatorio: Object.keys(comp.obrigatorio), regras } satisfies Gerados;
+    await tx.update(boards).set({ settings, updatedAt: new Date() }).where(eq(boards.id, a.boardId));
+    await registrar(tx, a, "board", "updated", a.boardId, { conditionals: lista, gerado: comp });
+    return comp;
+  });
+}
+
+/** Condicionais salvas e os campos/regras que elas geram. */
+export function condicionaisDoBoard(settings: Record<string, unknown> | null | undefined): { lista: Condicional[]; gerados: Gerados } {
+  const s = settings ?? {};
+  return {
+    lista: Array.isArray(s.conditionals) ? (s.conditionals as Condicional[]) : [],
+    gerados: (s.conditionals_generated as Gerados | undefined) ?? { visivel: [], obrigatorio: [], regras: [] },
+  };
+}
+
+/** Onde cada campo do board é usado ("Dependências do campo"). */
+export async function dependenciasDoBoard(boardId: string) {
+  const [[b], fs, rs, autos] = await Promise.all([
+    db.select({ settings: boards.settings }).from(boards).where(eq(boards.id, boardId)),
+    db.select().from(fields).where(and(eq(fields.boardId, boardId), isNull(fields.archivedAt))),
+    db.select().from(rules).where(eq(rules.boardId, boardId)),
+    db.select().from(automations).where(and(eq(automations.boardId, boardId), isNull(automations.archivedAt))),
+  ]);
+  const s = (b?.settings ?? {}) as Record<string, unknown>;
+  const { lista, gerados } = condicionaisDoBoard(s);
+  return dependenciasDosCampos(
+    fs.map((f) => ({ ...f, config: (f.config as Record<string, unknown>) ?? {} })),
+    {
+      // Regras geradas pelas condicionais aparecem como a condicional, sem repetir como regra.
+      regras: rs.filter((r) => !gerados.regras.includes(r.id)).map((r) => ({ kind: r.kind, expr: r.expr, fieldId: r.fieldId, message: r.message })),
+      automacoes: autos.map((x) => ({ nome: x.name, trigger: x.trigger, condicao: x.conditionExpr, steps: x.steps })),
+      condicionais: lista,
+      kanban: { campos: s.kanban_fields as string[] | undefined, prazo: s.kanban_due_field as string | null | undefined },
+    },
+  );
 }

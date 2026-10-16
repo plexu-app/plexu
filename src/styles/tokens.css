@@ -20,6 +20,8 @@
   --err-ink: #fff;
   --on-cor: #fff;
   --scrim: rgb(21 23 28 / 0.32);
+  /* Véu do card aberto (prompt PR 2, B1): --ink a 60%; no escuro, preto a 60% (tinta clara clarearia o board). */
+  --veu: rgb(21 23 28 / 0.6);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -27,6 +29,7 @@
     --bg: #141518; --paper: #1b1c21; --ink: #ecebe6; --ink-2: #b3b2ab; --ink-3: #7c7d84; --line: #2d2f36; --line-2: #24262c; --accent: #7c93ff; --accent-ink: #0f1523; --accent-soft: #232a4a;
     --ok-soft: #163026; --warn-soft: #3a2a10; --err-soft: #3b1a17;
     --scrim: rgb(0 0 0 / 0.55);
+    --veu: rgb(0 0 0 / 0.6);
   }
 }
 
@@ -34,6 +37,7 @@
   --bg: #141518; --paper: #1b1c21; --ink: #ecebe6; --ink-2: #b3b2ab; --ink-3: #7c7d84; --line: #2d2f36; --line-2: #24262c; --accent: #7c93ff; --accent-ink: #0f1523; --accent-soft: #232a4a;
   --ok-soft: #163026; --warn-soft: #3a2a10; --err-soft: #3b1a17;
   --scrim: rgb(0 0 0 / 0.55);
+  --veu: rgb(0 0 0 / 0.6);
 }
 
 /* Nomes legados (padrão shadcn/ui) apontando para os tokens: telas antigas seguem o tema sem reescrita. */

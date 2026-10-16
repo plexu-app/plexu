@@ -5,7 +5,16 @@ import { boardsDoWorkspace, workspacesArquivadosDoOwner, workspacesDoUsuario } f
 
 export const dynamic = "force-dynamic";
 
-export default async function LayoutWorkspace({ children, params }: { children: React.ReactNode; params: Promise<{ ws: string }> }) {
+export default async function LayoutWorkspace({
+  children,
+  modal,
+  params,
+}: {
+  children: React.ReactNode;
+  /** Card aberto em modal (rota interceptada @modal/(.)c/[card]). */
+  modal: React.ReactNode;
+  params: Promise<{ ws: string }>;
+}) {
   const { ws } = await params;
   // Arquivado: só o owner entra, e só as configurações do workspace respondem (as demais páginas dão 404).
   const ctx = await exigirMembro(ws, { permitirArquivado: true });
@@ -31,6 +40,7 @@ export default async function LayoutWorkspace({ children, params }: { children: 
         logo={<Logo altura={40} />}
       />
       <div className="flex min-h-screen flex-col pl-[232px] transition-[padding] recolhida:pl-14">{children}</div>
+      {modal}
     </div>
   );
 }

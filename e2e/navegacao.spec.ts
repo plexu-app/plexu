@@ -1,10 +1,12 @@
-// Sidebar recolhível: botão e atalho Ctrl+B, estado persistido entre recargas.
+// Sidebar recolhível: botão e atalho Ctrl+B, estado persistido entre recargas. Sem escolha salva, começa
+// aberta em telas de 1600px ou mais e recolhida abaixo disso.
 import { expect, test } from "@playwright/test";
 
 const EMAIL = process.env.PLEXU_SEED_EMAIL ?? "demo@plexu.dev";
 const SENHA = process.env.PLEXU_SEED_SENHA ?? "plexu-demo-2026";
 
 test("sidebar recolhe pelo botão e pelo atalho, e lembra o estado", async ({ page }) => {
+  await page.setViewportSize({ width: 1700, height: 900 });
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(EMAIL);
   await page.getByLabel("Senha").fill(SENHA);

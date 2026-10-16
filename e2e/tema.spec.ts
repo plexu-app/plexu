@@ -34,6 +34,7 @@ test("sem escolha, o tema segue o sistema", async ({ page }) => {
 });
 
 test("alternar Claro/Escuro persiste depois de recarregar, sem piscar", async ({ page }) => {
+  await page.setViewportSize({ width: 1700, height: 900 }); // sidebar aberta: alternador completo
   await vigiarTemaInicial(page);
   await page.emulateMedia({ colorScheme: "light" });
   await page.goto("/login");

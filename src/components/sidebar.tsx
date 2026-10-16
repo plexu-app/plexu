@@ -9,12 +9,16 @@ import { Archive, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, Settings } 
 import { sair } from "@/app/auth-actions";
 import { NovoBoard } from "@/components/criar-board";
 import { AlternarTema } from "@/components/tema";
+import { corDoBoard } from "@/lib/cores";
 import { cn } from "@/lib/utils";
 
 const CHAVE = "plexu:sidebar";
 
-/** Script inline no início do layout do workspace: aplica o estado salvo antes da pintura. */
-export const SCRIPT_SIDEBAR = `try{if(localStorage.getItem("${CHAVE}")==="recolhida")document.documentElement.dataset.sidebar="recolhida"}catch(e){}`;
+/**
+ * Script inline no início do layout do workspace: aplica o estado salvo antes da pintura. Sem escolha
+ * salva, começa recolhida em telas com menos de 1600px (o board ganha largura).
+ */
+export const SCRIPT_SIDEBAR = `try{var v=localStorage.getItem("${CHAVE}");if(v==="recolhida"||(v===null&&window.innerWidth<1600))document.documentElement.dataset.sidebar="recolhida"}catch(e){}`;
 
 /** Sidebar recolhível: botão e atalho Ctrl/⌘+B; estado em localStorage. */
 function useRecolhida() {
@@ -50,10 +54,6 @@ export interface BoardSidebar {
   kind: "workflow" | "database";
 }
 
-/** Cor do board: fluxos alternam as cores de fase (--f1..--f4); bases usam o cinza --f5. */
-export function corDoBoard(kind: BoardSidebar["kind"], indice: number) {
-  return kind === "database" ? "var(--f5)" : `var(--f${(indice % 4) + 1})`;
-}
 
 const item = "flex items-center gap-2 rounded border border-transparent px-2 py-[5px] text-[13.5px] text-ink-2 hover:bg-paper hover:text-ink recolhida:justify-center recolhida:px-0";
 const ativoCls = "border-line bg-paper font-semibold text-ink";
@@ -192,7 +192,9 @@ export function Sidebar({
             </button>
           </form>
         </div>
-        {recolhida ? <AlternarTema compacto /> : <AlternarTema className="self-start" />}
+        {/* Os dois alternadores; o CSS escolhe (sem esperar a hidratação ler o estado da sidebar). */}
+        <AlternarTema compacto className="hidden recolhida:block" />
+        <AlternarTema className="self-start recolhida:hidden" />
       </div>
     </aside>
   );

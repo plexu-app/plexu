@@ -4,7 +4,7 @@ import "server-only";
 // config.changed. Execução pelo mesmo executor do worker (src/automacoes/executor).
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { actions, automationRuns, automations, boards, cards, connections, fields, phases, variables } from "@/db/schema";
+import { actions, automationRuns, automations, boards, cards, connections, events, fields, phases, users, variables } from "@/db/schema";
 import { avaliarNoCard, emitirEventoConfig, type Actor, type Tx } from "@/core";
 import { executarRun } from "@/automacoes/executor";
 import { gravarVariavel } from "@/automacoes/segredos";
@@ -179,9 +179,19 @@ export async function automacoesDoBoard(boardId: string) {
     where automation_id in (${sql.join(lista.map((x) => sql`${x.id}`), sql`, `)})
     order by automation_id, created_at desc`);
   const porId = new Map(ultimas.map((u) => [u.automation_id, u]));
+  // "Atualizado por": autor do último config.changed da automação (o log de eventos guarda o ator).
+  const autores = await db.execute<{ id: string; nome: string | null }>(sql`
+    select distinct on (${events.data}->>'id') ${events.data}->>'id' as id, ${users.name} as nome
+    from ${events} left join ${users} on ${users.id} = ${events.actorId}
+    where ${events.type} = 'config.changed' and ${events.data}->>'entidade' = 'automation'
+      and ${events.data}->>'id' in (${sql.join(lista.map((x) => sql`${x.id}`), sql`, `)})
+    order by ${events.data}->>'id', ${events.occurredAt} desc`);
+  const autorDe = new Map(autores.map((a) => [a.id, a.nome]));
   return lista.map((x) => {
     const u = porId.get(x.id);
     return {
+      atualizadoEm: x.updatedAt.toISOString(),
+      atualizadoPor: autorDe.get(x.id) ?? null,
       id: x.id,
       nome: x.name,
       trigger: x.trigger as Record<string, unknown>,
@@ -258,6 +268,7 @@ export async function execucoesDoBoard(boardId: string, f: FiltroExecucoes = {})
     erro: run.error,
     log: run.log as unknown[],
     quando: run.createdAt.toISOString(),
+    duracaoMs: run.startedAt && run.finishedAt ? run.finishedAt.getTime() - run.startedAt.getTime() : null,
     gatilho: (run.context as { gatilho?: string; manual?: boolean }).manual ? "manual" : ((run.context as { gatilho?: string }).gatilho ?? (run.actionId ? "botão" : "—")),
   }));
 }

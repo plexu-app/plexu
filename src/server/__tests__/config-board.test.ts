@@ -2,7 +2,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/db";
-import { events, phases } from "@/db/schema";
+import { events, fields, phases, rules } from "@/db/schema";
 import { createCard } from "@/core";
 import { criarWorkspace } from "@/core/__tests__/fixtures";
 import { ErroConfig, criarBoard } from "../config";
@@ -18,6 +18,10 @@ import {
   editarCampo,
   moverFase,
   atualizarFase,
+  dependenciasDoBoard,
+  reordenarCampos,
+  restaurarCampo,
+  salvarCondicionais,
 } from "../config-board";
 
 type Alvo = { wsId: string; boardId: string; actor: { type: "user"; id: string } };
@@ -143,5 +147,52 @@ describe("exibição", () => {
     expect(b.settings).toMatchObject({ kanban_fields: [t.id, d.id], kanban_due_field: d.id });
     expect(await erro(definirExibicaoKanban(alvo, { campos: [], prazo: t.id }))).toMatch(/data/);
     expect(await erro(definirExibicaoKanban(alvo, { campos: [parcelas.boardId], prazo: null }))).toMatch(/não pertence/);
+  });
+});
+
+describe("condicionais em campos, ordem e dependências", () => {
+  it("compila para visible/required e can_edit; trocar ou esvaziar a lista desfaz o que foi gerado", async () => {
+    const tipo = await criarCampo(alvo, { nome: "Urgente", tipo: "boolean", config: {} });
+    const motivo = await criarCampo(alvo, { nome: "Motivo da urgência", tipo: "text", config: {} });
+    const valor = await criarCampo(alvo, { nome: "Valor fechado", tipo: "number", config: {} });
+    const lerCampo = async (id: string) => (await db.select().from(fields).where(eq(fields.id, id)))[0];
+    await salvarCondicionais(alvo, [
+      {
+        nome: "Urgência",
+        condicao: "card.urgente == true",
+        seVerdadeiro: [
+          { acao: "exibir", campos: [motivo.id] },
+          { acao: "obrigatorio", campos: [motivo.id] },
+          { acao: "bloquear", campos: [valor.id] },
+        ],
+        seFalso: [],
+      },
+    ]);
+    expect((await lerCampo(motivo.id)).visibleExpr).toBe("(card.urgente == true)");
+    expect((await lerCampo(motivo.id)).requiredExpr).toBe("(card.urgente == true)");
+    const bloqueios = await db.select().from(rules).where(and(eq(rules.boardId, alvo.boardId), eq(rules.fieldId, valor.id)));
+    expect(bloqueios.map((r) => [r.kind, r.expr])).toEqual([["can_edit", "!(card.urgente == true)"]]);
+
+    // Dependências: o campo da condição e os alvos apontam a condicional
+    const deps = await dependenciasDoBoard(alvo.boardId);
+    expect(deps[tipo.id].map((d) => d.nome)).toContain("Condicional: Urgência (na condição)");
+    expect(deps[valor.id].map((d) => d.nome)).toEqual(["Condicional: Urgência"]); // a regra gerada não aparece em dobro
+
+    // Esvaziar: expressões e regra geradas somem
+    await salvarCondicionais(alvo, []);
+    expect([(await lerCampo(motivo.id)).visibleExpr, (await lerCampo(motivo.id)).requiredExpr]).toEqual([null, null]);
+    expect(await db.select().from(rules).where(eq(rules.fieldId, valor.id))).toHaveLength(0);
+    expect(await erro(salvarCondicionais(alvo, [{ nome: "X", condicao: "card.(", seVerdadeiro: [{ acao: "exibir", campos: [motivo.id] }] }]))).toMatch(/condição de X/);
+  });
+
+  it("reordena campos e restaura arquivados", async () => {
+    const a = await criarCampo(alvo, { nome: "Ordem A", tipo: "text", config: {} });
+    const b = await criarCampo(alvo, { nome: "Ordem B", tipo: "text", config: {} });
+    await reordenarCampos(alvo, [b.id, a.id]);
+    const ordem = (await db.select({ id: fields.id }).from(fields).where(eq(fields.boardId, alvo.boardId)).orderBy(asc(fields.position))).map((x) => x.id);
+    expect(ordem.slice(0, 2)).toEqual([b.id, a.id]);
+    await arquivarCampo(alvo, a.id);
+    await restaurarCampo(alvo, a.id);
+    expect((await db.select().from(fields).where(eq(fields.id, a.id)))[0].archivedAt).toBeNull();
   });
 });

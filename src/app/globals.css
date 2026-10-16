@@ -6,6 +6,8 @@
 
 /* Sidebar recolhida (atributo no <html>, aplicado antes da pintura; ver components/sidebar.tsx). */
 @custom-variant recolhida (html[data-sidebar="recolhida"] &);
+/* Cabeçalho do board recolhido: só a faixa global (components/board-shell.tsx). */
+@custom-variant cabecalho-recolhido (html[data-cabecalho="recolhido"] &);
 /* Tema escuro pelo atributo data-theme (docs/DESIGN.md), não pela media query. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
@@ -35,6 +37,7 @@
   --color-f4: var(--f4);
   --color-f5: var(--f5);
   --color-scrim: var(--scrim);
+  --color-veu: var(--veu);
 
   /* Legados (shadcn/ui) → tokens */
   --color-background: var(--background);
