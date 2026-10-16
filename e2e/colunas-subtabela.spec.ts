@@ -48,7 +48,7 @@ test("sub-tabela: colunas escolhidas no modal; data editável direto na tabela",
 
   // Pedido do seed com 2 itens: colunas na ordem escolhida; "Separado em" editável na célula
   const [c] = await sql`select c.id from cards c join boards b on b.id = c.board_id where b.slug = 'pedidos' and c.props->>(select f.id::text from fields f where f.board_id = b.id and f.slug = 'referencia') = 'Estantes do depósito' limit 1`;
-  await page.goto(`/w/demo/b/pedidos/c/${c.id}`);
+  await page.goto(`/w/demo/c/${c.id}`);
   const tabela = page.getByTestId("coluna-atual").locator('[data-subtabela="Itens"]');
   await expect(tabela.locator("thead th")).toHaveText(["Card", "Separado em", "Valor", ""]);
   const celula = tabela.locator("[data-linha]").first().locator('[data-celula="Separado em"] input[type="date"]');

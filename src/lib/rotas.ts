@@ -2,5 +2,5 @@
 
 export const hrefBoard = (ws: string, board: string) => `/w/${ws}/b/${board}`;
 
-/** Card aberto por cima do board de origem. */
-export const hrefCard = (ws: string, board: string, cardId: string) => `/w/${ws}/b/${board}/c/${cardId}`;
+/** Card aberto: modal por cima da tela atual (rota interceptada) ou página do card no link direto. */
+export const hrefCard = (ws: string, cardId: string) => `/w/${ws}/c/${cardId}`;

@@ -41,5 +41,12 @@ for (const tema of ["light", "dark"] as const) {
       await page.locator("[data-linha]").first().waitFor();
       await capturar(page, "a-lista", tema);
     });
+
+    test("B: card aberto", async ({ page }) => {
+      await page.goto("/w/demo/b/pedidos");
+      await page.locator("[data-card]").filter({ hasText: "PD-0004" }).click();
+      await page.getByTestId("titulo-card").waitFor();
+      await capturar(page, "b-card-aberto", tema);
+    });
   });
 }

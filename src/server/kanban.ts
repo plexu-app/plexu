@@ -120,7 +120,7 @@ export async function extrasDosCards(ws: string, wsId: string, board: BoardCompl
   const conexoes = new Map<string, ConexaoCartao[]>();
   for (const l of [...links].sort((a, b) => (ordemCampo.get(a.campo) ?? 0) - (ordemCampo.get(b.campo) ?? 0))) {
     const lista = conexoes.get(l.de) ?? [];
-    lista.push({ board: l.boardNome, cor: cores.get(l.boardId) ?? "var(--f5)", id: l.para, titulo: tituloOu(l.titulo, l.para), href: hrefCard(ws, l.boardSlug, l.para) });
+    lista.push({ board: l.boardNome, cor: cores.get(l.boardId) ?? "var(--f5)", id: l.para, titulo: tituloOu(l.titulo, l.para), href: hrefCard(ws, l.para) });
     conexoes.set(l.de, lista);
   }
   return {

@@ -119,6 +119,7 @@ describe("movimentosDoCard", () => {
     expect(ms[0]).toEqual({ faseId: B.fases.abertura, permitido: true });
     expect(ms[1].permitido).toBe(false);
     expect(ms[1].motivo).toMatch(/Valor/);
+    expect(ms[1].obrigatorios).toBe(true); // bloqueio por obrigatório, não por regra
     expect((await estado(c.id))[B.campos.valor].editavel).toBe(true);
   });
 });

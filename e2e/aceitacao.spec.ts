@@ -88,9 +88,9 @@ test("pedido com 2 itens: enviar sem separar é bloqueado; depois de separar, en
   await page.reload();
   await expect(noKanban("Enviado")).toBeVisible();
 
-  // Histórico registra a movimentação (URL direta do card)
+  // Atividades registram a movimentação (URL direta do card)
   await page.goto(urlCard);
   await expect(page.getByTestId("fase-card")).toHaveText("Enviado");
-  await painel.getByRole("tab", { name: "Histórico" }).click();
+  await painel.getByRole("tab", { name: /Atividades/ }).click();
   await expect(page.getByTestId("historico")).toContainText("moveu de Novo para Enviado");
 });

@@ -147,7 +147,7 @@ export function NovoCard({
                   onOpenChange(false);
                   reiniciar();
                   if (aoCriar) aoCriar(r.id);
-                  else router.push(`/w/${ws}/b/${board}/c/${r.id}`);
+                  else router.push(`/w/${ws}/c/${r.id}`, { scroll: false });
                 } else {
                   // Erro de um campo só (ex.: formato): a mensagem do servidor vai para baixo do campo.
                   setErros(Object.fromEntries((r.campos ?? []).map((id) => [id, r.campos?.length === 1 ? r.motivo.replace(/^campo '[^']*': /, "") : "Verifique este campo"])));

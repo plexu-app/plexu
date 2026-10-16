@@ -192,7 +192,9 @@ export function Sidebar({
             </button>
           </form>
         </div>
-        {recolhida ? <AlternarTema compacto /> : <AlternarTema className="self-start" />}
+        {/* Os dois alternadores; o CSS escolhe (sem esperar a hidratação ler o estado da sidebar). */}
+        <AlternarTema compacto className="hidden recolhida:block" />
+        <AlternarTema className="self-start recolhida:hidden" />
       </div>
     </aside>
   );

@@ -200,12 +200,13 @@ export function FormCampos({
   };
 
   return (
-    <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+    // Uma coluna (prompt PR 2, B2): rótulo de 14px, inputs de 40px.
+    <div className="flex flex-col gap-5 [&_input:not([type=checkbox]):not([type=radio]):not([type=file])]:h-10 [&_select]:h-10">
       {campos.map(({ campo, valor, estado, exibicao, inicialRelacao }) => {
         if (campo.type === "relation") {
           const conteudo = relacoes[campo.id];
           return conteudo ? (
-            <div key={campo.id} className="col-span-2" data-campo={campo.name}>
+            <div key={campo.id} data-campo={campo.name}>
               {conteudo}
             </div>
           ) : null;
@@ -218,12 +219,11 @@ export function FormCampos({
         return (
           <div
             key={campo.id}
-            className={campo.type === "long_text" || campo.type === "dynamic_text" ? "col-span-2" : ""}
             data-campo={campo.name}
             data-salvamento={editavel ? s.estado : undefined}
           >
             <div className="mb-1.5 flex items-center gap-2">
-              <Label htmlFor={idInput}>
+              <Label htmlFor={idInput} className="text-sm text-ink">
                 {campo.name}
                 {estado?.obrigatorio && <span className="ml-0.5 text-destructive" aria-label="obrigatório">*</span>}
               </Label>
@@ -267,10 +267,14 @@ export function FormCampos({
                   )
                 }
               </AutoSalvar>
+            ) : campo.type === "dynamic_text" ? (
+              <p id={idInput} className="whitespace-pre-wrap text-sm text-ink" data-texto-dinamico>
+                {(exibicao ?? formatarValor(campo, valor, mapaPessoas)) || <span className="text-ink-3">—</span>}
+              </p>
             ) : (
               <div
                 id={idInput}
-                className={`min-h-9 rounded-md border px-3 py-2 text-sm ${calculado ? "border-dashed border-primary/30 bg-primary/5" : "bg-muted"}`}
+                className={`flex min-h-10 items-center rounded border px-3 py-2 text-sm ${calculado ? "border-dashed border-accent/30 bg-accent-soft/40" : "border-line bg-bg"}`}
               >
                 {(exibicao ?? formatarValor(campo, valor, mapaPessoas)) || <span className="text-muted-foreground">—</span>}
               </div>

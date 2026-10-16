@@ -177,7 +177,7 @@ export function Kanban({
               coluna={col}
               estado={e}
               bloqueio={arrastando && emArraste?.phaseId !== col.id ? bloqueios.get(col.id) : undefined}
-              href={(id) => hrefCard(ws, board, id)}
+              href={(id) => hrefCard(ws, id)}
               onNovo={() => abrirNovo(col.id)}
               onMais={() => void carregarMais(col.id)}
               configurar={podeConfigurar ? `/w/${ws}/b/${board}/settings?aba=fases&fase=${col.id}` : null}

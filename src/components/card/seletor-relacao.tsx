@@ -135,7 +135,7 @@ export function SeletorRelacao({
         <ul className="flex flex-wrap gap-2">
           {ligados.map((c) => (
             <li key={c.id} className="flex items-center gap-1 rounded-md border px-2 py-1 text-sm">
-              <Link href={`/w/${ws}/b/${boardAlvo.slug}/c/${c.id}`} className="hover:underline">
+              <Link href={`/w/${ws}/c/${c.id}`} className="hover:underline">
                 {tituloOu(c.title, c.id)}
               </Link>
               <span className="font-mono text-xs text-muted-foreground">{idCurto(c.id)}</span>

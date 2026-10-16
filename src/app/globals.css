@@ -37,6 +37,7 @@
   --color-f4: var(--f4);
   --color-f5: var(--f5);
   --color-scrim: var(--scrim);
+  --color-veu: var(--veu);
 
   /* Legados (shadcn/ui) → tokens */
   --color-background: var(--background);

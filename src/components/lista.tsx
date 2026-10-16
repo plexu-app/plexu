@@ -182,7 +182,7 @@ export function Lista({
                 </td>
                 {visiveis.map((c, i) => (
                   <td key={c.id} className={cn("max-w-72 truncate whitespace-nowrap border-b border-line-2 px-3", i === visiveis.length - 1 && "border-r")}>
-                    <Celula coluna={c} linha={l} href={`${hrefCard(ws, board, l.id)}?v=tabela`} />
+                    <Celula coluna={c} linha={l} href={hrefCard(ws, l.id)} />
                   </td>
                 ))}
               </tr>

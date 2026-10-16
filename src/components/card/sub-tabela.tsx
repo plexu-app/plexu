@@ -124,7 +124,7 @@ export function SubTabela({
             {linhas.map((l) => (
               <Tr key={l.id} data-linha={l.id}>
                 <Td>
-                  <Link href={`/w/${ws}/b/${boardFilho.slug}/c/${l.id}`} className="hover:underline">
+                  <Link href={`/w/${ws}/c/${l.id}`} className="hover:underline">
                     {tituloOu(l.title, l.id)}
                   </Link>{" "}
                   <span className="font-mono text-xs text-muted-foreground">{idCurto(l.id)}</span>

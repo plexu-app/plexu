@@ -105,7 +105,7 @@ export function Execucoes({
                   <tr className="cursor-pointer border-t hover:bg-muted/50" onClick={() => setAberta(aberta === l.id ? null : l.id)} data-execucao={l.id}>
                     <td className="py-1.5 whitespace-nowrap">{new Date(l.quando).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "medium" })}</td>
                     <td>{l.nome}</td>
-                    <td>{l.cardId ? <a className="underline-offset-2 hover:underline" href={`/w/${ws}/b/${board}/c/${l.cardId}`} onClick={(e) => e.stopPropagation()}>{l.card || l.cardId.slice(0, 8)}</a> : "—"}</td>
+                    <td>{l.cardId ? <a className="underline-offset-2 hover:underline" href={`/w/${ws}/c/${l.cardId}`} onClick={(e) => e.stopPropagation()}>{l.card || l.cardId.slice(0, 8)}</a> : "—"}</td>
                     <td className="text-muted-foreground">{l.gatilho}</td>
                     <td>
                       <BadgeStatus status={l.status} env={l.env} />

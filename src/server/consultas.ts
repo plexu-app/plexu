@@ -3,6 +3,7 @@ import "server-only";
 import { and, asc, count, desc, eq, ilike, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  attachments,
   boards,
   cardComments,
   cardLinks,
@@ -434,4 +435,20 @@ export async function boardsConectados(wsId: string, b: BoardCompleto): Promise<
       ),
     );
   return [...new Set([...alvos, ...entrando.map((e) => e.boardId)])].filter((id) => id && id !== b.id);
+}
+
+/** Anexos do card (de campos e de comentários), na ordem de envio. */
+export async function anexosDoCard(wsId: string, cardId: string) {
+  return db
+    .select({ id: attachments.id, nome: attachments.filename, tamanho: attachments.size, campoId: attachments.fieldId, comentarioId: attachments.commentId, criadoEm: attachments.createdAt })
+    .from(attachments)
+    .where(and(eq(attachments.workspaceId, wsId), eq(attachments.cardId, cardId)))
+    .orderBy(asc(attachments.createdAt));
+}
+
+/** Nome de um usuário (quem criou o card pode não ser mais membro). */
+export async function nomeDoUsuario(id: string | null): Promise<string | null> {
+  if (!id) return null;
+  const [u] = await db.select({ nome: users.name }).from(users).where(eq(users.id, id));
+  return u?.nome ?? null;
 }
